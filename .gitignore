@@ -1,0 +1,22 @@
+# Build outputs
+*.exe
+!src/**/*.cs
+
+# Runtime logs
+err.txt
+watchdog_log.txt
+watchdog_crash.log
+
+# Crash dump backups
+.crashback/
+.tmp/
+*.tmp
+
+# OS / editor
+Thumbs.db
+desktop.ini
+.DS_Store
+.vs/
+.idea/
+*.user
+*.suo
