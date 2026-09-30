@@ -144,3 +144,110 @@ pclock/
 
 - **锁屏期间 Timer 空转**（`App.cs`）：`OnTick` 首行 `lockForm != null` 即 `return`，开销可忽略。
   加 `Stop()/Start()` 反而有进程崩溃后 Timer 永不自启的风险，保留当前设计。
+
+## 更新日志
+
+### 2026-09-30 — v1.1.0 (重构与关键修复)
+
+#### 🐛 Bug 修复（本次提交新增）
+
+1. **(2026-09-30) StopEvent 未创建导致看门狗无法优雅退出** (`App.cs`, `Watchdog.cs`)
+   - 主程序启动时创建命名事件 `Local\PCLock_Stop`，`Shutdown()` 时 `Set()` 通知看门狗退出
+   - 看门狗 `OpenExisting` 监听，收到信号后清理资源并退出，避免卸载残留进程
+
+2. **(2026-09-30) HKCU 回退降低防护等级** (`Store.cs`)
+   - 移除注册表写入失败时回退 HKCU 的逻辑
+   - 程序清单已声明 `requireAdministrator`，初始化失败直接抛异常，强制管理员权限运行
+
+3. **(2026-09-30) DeductOffline 整数除法向下取整导致少扣离线时间** (`App.cs`)
+   - 离线时长计算改用 `Math.Ceiling` 浮点除法，避免断电/关机期间时间折算偏少
+   - 例如离线 59.9 秒原按 59 秒扣除，现向上取整为 60 秒
+
+4. **(2026-09-30) 看门狗 Mutex 异常吞噬误判进程存活** (`Watchdog.cs`)
+   - 仅捕获 `WaitHandleCannotBeOpenedException` 判定进程死亡
+   - 其他异常（如 `UnauthorizedAccessException`）不再被视为进程存活
+
+5. **(2026-09-30) 看门狗固定 Sleep 8s 改为轮询检测** (`Watchdog.cs`)
+   - 主程序重启后每 500ms 检测 Mutex 是否出现，最多等待 8 秒
+   - 响应更灵敏，避免慢机器启动超时或快机器空等
+
+6. **(2026-09-30) ProtectSelf 硬编码 Everyone SID** (`Protection.cs`)
+   - 改用 `SecurityIdentifier(WellKnownSidType.WorldSid, null)` 动态获取 S-1-1-0
+   - 代码可读性更强，避免手写二进制 SID 出错
+
+7. **(2026-09-30) LockForm 低级钩子资源泄漏风险** (`LockForm.cs`)
+   - `hook = new LowLevelHook()` 移至构造函数末尾
+   - 前面初始化失败时也能正确清理，避免全局钩子泄漏
+
+8. **(2026-09-30) Store.cs 命名空间冲突** (`Store.cs`)
+   - `using System.Security.Cryptography` 内置 `Constants` 类导致歧义
+   - 添加别名 `using PCLockConstants = PCLock.Constants` 消除冲突
+
+#### 🔧 重构与代码质量
+
+9. **(2026-09-30) 新增 Constants.cs 集中管理所有常量** (`Constants.cs` 新增)
+   - 39 个常量统一定义：注册表路径、Mutex 名称、时间阈值、PIN 策略、看门狗参数等
+   - 所有源文件引用更新为 `Constants.xxx`，便于维护和测试
+
+10. **(2026-09-30) build.bat / release.yml 同步新增 Constants.cs 编译引用**
+    - 本地构建脚本与 GitHub Actions 工作流均已更新
+
+#### 📝 文档与 CI
+
+11. **(2026-09-30) 修复 GitHub Actions 编译缺失 Constants.cs** (`.github/workflows/release.yml`)
+    - workflow 编译命令补全 `src\Constants.cs`，CI 现可通过
+
+---
+
+### 2026-09-30 — v1.0.x (原有修复记录)
+
+#### Bug 修复
+
+1. **(2026-09-30) 气泡提醒因 Timer 精度漂移可能跳过** (`App.cs`)
+   原代码用 `remaining == 300` / `remaining == 60` 精确匹配，Timer 精度可跳过中间值。
+   改为 `remaining <= 300` / `remaining <= 60` 范围判断 + `warned5` / `warned1` 标志位防重复，
+   在 `Unlock()` 和 `ResetRemaining()` 中重置标志。
+
+2. **(2026-09-30) 计划任务 `/TR` 参数多前导反斜杠** (`App.cs`)
+   原代码 `schtasks /TR "\" + exe + "\\"` 生成了 `\\C:\...\PCLock.exe\\`，
+   `schtasks` 不接受多前导 `\`。去掉多余转义，现在正确生成 `/TR "C:\Program Files\PCLock\PCLock.exe"`。
+
+3. **(2026-09-30) UnprotectSelf 安全描述符结构错误** (`Protection.cs`)
+   原代码构造 20 字节 SD 并设 `SE_DACL_PRESENT`，但 ACL 数据不存在，`Dacl` 偏移无效。
+   改为 28 字节（20 header + 8 字节空 ACL），正确设置 Dacl 偏移=20、ACL_REVISION=2、ACE 数=0。
+
+4. **(2026-09-30) 口算题可能凑不齐指定数量** (`MathUtil.cs`)
+   `NextBatch(count)` 中 2000 次循环用尽后直接返回，可能少于 count 道。
+   增加兜底 while 循环：不重复抽完后再允许重复，保证返回数量恒等于 count。
+
+5. **(2026-09-30) 看门狗日志用相对路径** (`Watchdog.cs`)
+   原代码 `File.WriteAllText("watchdog_log.txt", ...)` 写到当前工作目录。
+   改为 `AppDomain.CurrentDomain.BaseDirectory + "watchdog_log.txt"`，确保写入 EXE 同目录。
+
+6. **(2026-09-30) 看门狗 while 循环内 GetLockFlag 无异常保护** (`Watchdog.cs`)
+   `Store.GetLockFlag()` 可能因注册表异常抛出，直接放在 `if` 条件里会导致 while 异常退出。
+   先 try-catch 到局部变量 `flag`，再用 `flag == 1` 判断。
+
+7. **(2026-09-30) PIN 对话框无全局冷却机制** (`SettingsForm.cs`)
+   反复打开→失败 5 次→关闭→重开，可无限尝试。增加 `static cooldownUntil`，
+   5 连败后全局 30 秒冷却，跨对话框实例生效。
+
+8. **(2026-09-30) PIN 密码无长度上限** (`SettingsForm.cs`、`LockForm.cs`)
+   仅校验 `>=4` 位，无上限。三个 PIN 输入框均增加 `MaxLength = 20`。
+
+9. **(2026-09-30) 锁屏界面未拦截 Shift+Tab** (`LockForm.cs`)
+   原代码只检查 `alt` 键拦截 Alt+Tab，Shift+Tab 可绕过。
+   改为分别处理 `WM_SYSKEYDOWN`（Alt+Tab）和 `WM_KEYDOWN + shift`（Shift+Tab）。
+
+10. **(2026-09-30) 钩子回调 P/Invoke 函数未声明** (`LockForm.cs`)
+    原代码调用 `GetKeyState` 但无 `[DllImport]` 声明（编译必失败）。
+    改用已声明的 `GetAsyncKeyState`（low-level hook 中更可靠，不依赖线程输入队列），
+    删除多余的 `GetKeyState` 声明。
+
+11. **(2026-09-30) 锁屏 PIN 框允许输入非数字字符** (`LockForm.cs`)
+    答案框只接受数字，PIN 若包含字母则永远无法匹配。增加数字字符过滤。
+
+### 未改项
+
+- **锁屏期间 Timer 空转**（`App.cs`）：`OnTick` 首行 `lockForm != null` 即 `return`，开销可忽略。
+  加 `Stop()/Start()` 反而有进程崩溃后 Timer 永不自启的风险，保留当前设计。
