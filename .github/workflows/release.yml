@@ -29,8 +29,15 @@ jobs:
       - name: Build PCLock.exe
         shell: cmd
         run: |
-          set CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
+          rem 优先使用 .NET 3.5 编译器（Win7 自带，产物在 Win7 上无需额外运行库）
+          set CSC=%WINDIR%\Microsoft.NET\Framework64\v3.5\csc.exe
+          if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework\v3.5\csc.exe
+          if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
           if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe
+          if not exist "%CSC%" (
+            echo [错误] 未找到 csc.exe
+            exit /b 1
+          )
           echo 使用编译器: %CSC%
 
           "%CSC%" /nologo /target:winexe /out:PCLock.exe /win32manifest:app.manifest /optimize+ /codepage:65001 ^
