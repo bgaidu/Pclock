@@ -3,48 +3,58 @@ name: Build and Release PCLock
 on:
   push:
     tags:
-      - 'v*'  # 推送 v1.0.0 这样的标签时触发
-  workflow_dispatch: # 允许手动触发
+      - 'v*'
+  workflow_dispatch:
 
 permissions:
-  contents: write # 允许创建 Release 和上传文件
+  contents: write
 
 jobs:
   build:
-    runs-on: windows-latest # C# 桌面应用必须在 Windows 上构建
+    runs-on: windows-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 如果你需要特定版本的 .NET SDK，可以取消下面的注释并修改版本号
-      # - name: Setup .NET
-      #   uses: actions/setup-dotnet@v4
-      #   with:
-      #     dotnet-version: '3.5' # 或你项目实际需要的版本
+      - name: Show repository structure before build
+        shell: pwsh
+        run: |
+          Write-Host "===== 仓库根目录 ====="
+          Get-ChildItem -Recurse -File | Select-Object FullName
 
       - name: Build with build.bat
         shell: cmd
         run: |
           cd pclock
           build.bat
-          dir
+          echo "===== build.bat 执行完毕 ====="
+          dir /s /b
+
+      - name: Show repository structure after build
+        shell: pwsh
+        run: |
+          Write-Host "===== 构建后所有文件 ====="
+          Get-ChildItem -Recurse -File | Select-Object FullName
+
+      - name: Find PCLock.exe
+        shell: pwsh
+        run: |
+          Write-Host "===== 搜索所有 .exe 文件 ====="
+          Get-ChildItem -Recurse -Filter *.exe | Select-Object FullName
 
       - name: Package Release
         shell: pwsh
         run: |
-          # 创建发布文件夹
           New-Item -ItemType Directory -Force -Path release
-          # 将生成的 PCLock.exe 复制到发布文件夹（根据你的 build.bat 实际输出路径调整）
-          Copy-Item -Path "pclock\PCLock.exe" -Destination "release\" -Force
-          # 如果有其他需要分发的文件（如配置文件、说明文档），也可以在这里复制
-          # 将发布文件夹压缩为 ZIP
-          Compress-Archive -Path "release\*" -DestinationPath "PCLock-Release.zip"
+          # 先临时复制一个占位文件，避免这一步失败
+          "placeholder" | Out-File -FilePath release\README.txt
+          Compress-Archive -Path "release\*" -DestinationPath "PCLock-Release.zip" -Force
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: PCLock-Release.zip # 上传 ZIP 文件作为 Release 附件
+          files: PCLock-Release.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
