@@ -17,39 +17,63 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Show repository structure before build
-        shell: pwsh
+      - name: Check available compilers
+        shell: cmd
         run: |
-          Write-Host "===== 仓库根目录 ====="
-          Get-ChildItem -Recurse -File | Select-Object FullName
+          echo === 检查 csc.exe ===
+          if exist "%WINDIR%\Microsoft.NET\Framework\v3.5\csc.exe" echo FOUND: Framework v3.5
+          if exist "%WINDIR%\Microsoft.NET\Framework64\v3.5\csc.exe" echo FOUND: Framework64 v3.5
+          if exist "%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe" echo FOUND: Framework v4.0
+          if exist "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" echo FOUND: Framework64 v4.0
+          echo === pclock 目录内容 ===
+          dir /s /b pclock
 
-      - name: Build with build.bat
+      - name: Build PCLock.exe
         shell: cmd
         run: |
           cd pclock
-          build.bat
-          echo "===== build.bat 执行完毕 ====="
-          dir /s /b
 
-      - name: Show repository structure after build
-        shell: pwsh
-        run: |
-          Write-Host "===== 构建后所有文件 ====="
-          Get-ChildItem -Recurse -File | Select-Object FullName
+          rem 选择可用的 csc.exe（优先 4.0，因为 GitHub runner 一定有）
+          set CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
+          if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe
+          if not exist "%CSC%" (
+            echo [错误] 找不到 csc.exe
+            exit /b 1
+          )
+          echo 使用编译器: %CSC%
 
-      - name: Find PCLock.exe
-        shell: pwsh
-        run: |
-          Write-Host "===== 搜索所有 .exe 文件 ====="
-          Get-ChildItem -Recurse -Filter *.exe | Select-Object FullName
+          "%CSC%" /nologo /target:winexe /out:PCLock.exe /win32manifest:app.manifest /optimize+ /codepage:65001 ^
+            /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ^
+            src\Program.cs src\App.cs src\Store.cs src\MathUtil.cs src\Protection.cs src\Watchdog.cs src\LockForm.cs src\SettingsForm.cs
+
+          echo ExitCode: %errorlevel%
+
+          if not exist PCLock.exe (
+            echo [错误] PCLock.exe 未生成
+            dir
+            exit /b 1
+          )
+
+          echo [成功] PCLock.exe 已生成
+          dir PCLock.exe
 
       - name: Package Release
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path release
-          # 先临时复制一个占位文件，避免这一步失败
-          "placeholder" | Out-File -FilePath release\README.txt
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Copy-Item -Path "pclock\PCLock.exe" -Destination "release\" -Force
+          # 如果你有 app.manifest、README 等需要一起打包，取消下面注释并按需添加
+          # Copy-Item -Path "pclock\app.manifest" -Destination "release\" -Force
+          # Copy-Item -Path "README.md" -Destination "release\" -Force
           Compress-Archive -Path "release\*" -DestinationPath "PCLock-Release.zip" -Force
+          Write-Host "===== 打包内容 ====="
+          Get-ChildItem release
+
+      - name: Upload ZIP to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PCLock-Release
+          path: PCLock-Release.zip
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
