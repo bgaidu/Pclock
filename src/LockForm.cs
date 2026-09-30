@@ -15,8 +15,6 @@ namespace PCLock
         public event EventHandler UnlockRequested;
         public bool AllowClose;
 
-        const int TotalQuestions = 10;   // 一次锁屏共 10 题，全部答对才能解锁
-
         Label titleLabel;
         Label questionLabel;
         Label statusLabel;
@@ -96,7 +94,7 @@ namespace PCLock
             pinBox.Location = new Point(20, 52);
             pinBox.Width = 330;
             pinBox.PasswordChar = '*';
-            pinBox.MaxLength = 20;
+            pinBox.MaxLength = Constants.PinMaxLength;
             pinBox.KeyPress += delegate(object s, KeyPressEventArgs e)
             {
                 // PIN 只能是数字：答案框也只接受数字，允许字母会导致 PIN 永远无法在锁屏界面输入
@@ -133,13 +131,14 @@ namespace PCLock
             Resize += delegate { LayoutControls(); };
 
             uiTimer = new Timer();
-            uiTimer.Interval = 500;
+            uiTimer.Interval = Constants.UiTimerIntervalMs;
             uiTimer.Tick += UiTick;
             uiTimer.Start();
 
             StartBatch();
             LayoutControls();
 
+            // 低级钩子初始化放在最后，确保前面初始化失败时也能正确清理
             hook = new LowLevelHook();
         }
 
@@ -176,7 +175,7 @@ namespace PCLock
 
         void StartBatch()
         {
-            questions = MathUtil.NextBatch(TotalQuestions);
+            questions = MathUtil.NextBatch(Constants.TotalQuestions);
             qIndex = 0;
             ShowCurrentQuestion();
             UpdateStatus();
@@ -193,7 +192,7 @@ namespace PCLock
         void UpdateStatus()
         {
             int cur = Math.Min(qIndex + 1, questions.Count);
-            statusLabel.Text = "共 " + TotalQuestions + " 题，全部答对即可解锁（当前第 " + cur +
+            statusLabel.Text = "共 " + Constants.TotalQuestions + " 题，全部答对即可解锁（当前第 " + cur +
                 " 题，已答对 " + correctCount + " 题）";
         }
 
@@ -225,10 +224,10 @@ namespace PCLock
                 correctCount = 0;
                 qIndex = 0;
                 ShowCurrentQuestion();
-                wrongLeft = 5;
+                wrongLeft = Constants.WrongCooldownSec;
                 answerBox.Enabled = false;
                 submitBtn.Enabled = false;
-                statusLabel.Text = "回答错误，全部清零重新开始，请 5 秒后再试";
+                statusLabel.Text = "回答错误，全部清零重新开始，请 " + Constants.WrongCooldownSec + " 秒后再试";
             }
             answerBox.Text = "";
             answerBox.Focus();
@@ -246,16 +245,16 @@ namespace PCLock
                 pinFails++;
                 pinBox.Text = "";
                 pinBox.Focus();
-                if (pinFails >= 5)
+                if (pinFails >= Constants.PinMaxFails)
                 {
                     pinFails = 0;
-                    pinCooldown = 30;
+                    pinCooldown = Constants.PinCooldownSec;
                     pinBox.Enabled = false;
                     pinOkBtn.Enabled = false;
                 }
                 else
                 {
-                    pinLabel.Text = "PIN 错误（还可尝试 " + (5 - pinFails) + " 次）";
+                    pinLabel.Text = "PIN 错误（还可尝试 " + (Constants.PinMaxFails - pinFails) + " 次）";
                 }
             }
         }
@@ -325,7 +324,7 @@ namespace PCLock
         }
     }
 
-    /// <summary>低级键盘钩子：锁屏期间屏蔽 Win 键、Alt+Tab、Alt+Esc、Ctrl+Esc、Alt+方向键</summary>
+    /// <summary>低级键盘钩子：锁屏期间屏蔽 Win 键、Alt+Tab、Alt+Esc、Ctrl+Esc、Alt+方向键、Shift+Tab</summary>
     public class LowLevelHook : IDisposable
     {
         const int WH_KEYBOARD_LL = 13;
@@ -365,13 +364,16 @@ namespace PCLock
                 bool ctrl = (GetAsyncKeyState(0x11) & 0x8000) != 0;
                 bool shift = (GetAsyncKeyState(0x10) & 0x8000) != 0;
 
-                if (vk == 0x5B || vk == 0x5C) return (IntPtr)1;            // 左/右 Win 键
+                // Win 键 (LWin=0x5B, RWin=0x5C)
+                if (vk == 0x5B || vk == 0x5C) return (IntPtr)1;
                 // Alt+Tab：WM_SYSKEYDOWN 时 Tab 必然带 Alt，直接拦截
                 if (isSysKey && vk == 0x09) return (IntPtr)1;
                 // Shift+Tab：WM_KEYDOWN + Shift 按下
                 if (isKeyDown && vk == 0x09 && shift) return (IntPtr)1;
-                if (vk == 0x1B && (alt || ctrl)) return (IntPtr)1;         // Alt+Esc / Ctrl+Esc
-                if (alt && (vk >= 0x25 && vk <= 0x28)) return (IntPtr)1;   // Alt+方向键
+                // Alt+Esc / Ctrl+Esc
+                if (vk == 0x1B && (alt || ctrl)) return (IntPtr)1;
+                // Alt+方向键
+                if (alt && (vk >= 0x25 && vk <= 0x28)) return (IntPtr)1;
             }
             return CallNextHookEx(hHook, nCode, wParam, lParam);
         }

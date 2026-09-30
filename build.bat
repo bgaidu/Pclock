@@ -2,28 +2,28 @@
 setlocal
 cd /d "%~dp0"
 
-rem ÓÅÏÈÊ¹ÓÃ .NET 3.5 ±àÒëÆ÷£¨Win7 ×Ô´ø£¬²úÎïÔÚ Win7 ÉÏÎÞÐè¶îÍâÔËÐÐ¿â£©
+rem ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½ï¿½ .NET 3.5 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Win7 ï¿½Ô´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Win7 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¿â£©
 set CSC=%WINDIR%\Microsoft.NET\Framework\v3.5\csc.exe
 if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework64\v3.5\csc.exe
 if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe
 if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
 if not exist "%CSC%" (
-  echo [´íÎó] Î´ÕÒµ½ .NET Framework ±àÒëÆ÷¡£
-  echo ÇëÔÚ"¿ØÖÆÃæ°å - ³ÌÐò - ÆôÓÃ»ò¹Ø±Õ Windows ¹¦ÄÜ"ÖÐÆôÓÃ .NET Framework 3.5 ºóÖØÊÔ¡£
+  echo [ï¿½ï¿½ï¿½ï¿½] Î´ï¿½Òµï¿½ .NET Framework ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+  echo ï¿½ï¿½ï¿½ï¿½"ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ - ï¿½ï¿½ï¿½ï¿½ - ï¿½ï¿½ï¿½Ã»ï¿½Ø±ï¿½ Windows ï¿½ï¿½ï¿½ï¿½"ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ .NET Framework 3.5 ï¿½ï¿½ï¿½ï¿½ï¿½Ô¡ï¿½
   pause
   exit /b 1
 )
-echo Ê¹ÓÃ±àÒëÆ÷: %CSC%
+echo Ê¹ï¿½Ã±ï¿½ï¿½ï¿½ï¿½ï¿½: %CSC%
 
 "%CSC%" /nologo /target:winexe /out:PCLock.exe /win32manifest:app.manifest /optimize+ /codepage:65001 ^
   /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ^
-  src\Program.cs src\App.cs src\Store.cs src\MathUtil.cs src\Protection.cs src\Watchdog.cs src\LockForm.cs src\SettingsForm.cs
+  src\Program.cs src\App.cs src\Store.cs src\MathUtil.cs src\Protection.cs src\Watchdog.cs src\LockForm.cs src\SettingsForm.cs src\Constants.cs
 
 if errorlevel 1 (
-  echo [´íÎó] ±àÒëÊ§°Ü¡£
+  echo [ï¿½ï¿½ï¿½ï¿½] ï¿½ï¿½ï¿½ï¿½Ê§ï¿½Ü¡ï¿½
   pause
   exit /b 1
 )
 echo.
-echo ±àÒëÍê³É: %~dp0PCLock.exe
+echo ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½: %~dp0PCLock.exe
 pause

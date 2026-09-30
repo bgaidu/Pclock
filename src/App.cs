@@ -13,12 +13,6 @@ namespace PCLock
     /// </summary>
     public class App : ApplicationContext
     {
-        public const string RegPath = "SOFTWARE\\PCLock";
-        public const string MutexName = "Local\\PCLock_Main";
-        public const string WatchMutexName = "Local\\PCLock_Watchdog";
-        public const string StopEventName = "Local\\PCLock_Stop";
-        public const string TaskName = "PCLock";
-
         public static App Instance;
 
         NotifyIcon tray;
@@ -28,10 +22,23 @@ namespace PCLock
         bool stopping;
         bool warned5, warned1; // 本轮是否已弹过 5 分钟 / 1 分钟提醒
         Thread guardThread;
+        EventWaitHandle stopEvent; // 供看门狗监听的停止事件
 
         public App()
         {
             Instance = this;
+
+            // 创建停止事件（供看门狗监听），必须在 Store.Init 之前创建，确保看门狗能打开
+            try
+            {
+                stopEvent = new EventWaitHandle(false, EventResetMode.ManualReset, Constants.StopEventName);
+            }
+            catch (Exception)
+            {
+                // 已存在则打开现有的
+                try { stopEvent = EventWaitHandle.OpenExisting(Constants.StopEventName); }
+                catch { stopEvent = null; }
+            }
 
             Store.Init();
             Protection.ProtectSelf();     // 自保护：拒绝任务管理器结束进程
@@ -79,9 +86,13 @@ namespace PCLock
         {
             long last = Store.GetLastSeenUtc();
             if (last <= 0) return false;   // 上次是正常退出（时间戳已清），不扣
-            long elapsedSec = (DateTime.UtcNow.Ticks - last) / TimeSpan.TicksPerSecond;
+            
+            // 使用浮点除法并向上取整，避免整数除法向下取整导致少扣时间
+            double elapsedSec = (DateTime.UtcNow.Ticks - last) / (double)TimeSpan.TicksPerSecond;
             if (elapsedSec <= 0) return false;
-            remaining -= (int)Math.Min(elapsedSec, (long)int.MaxValue);
+            
+            long elapsedCeil = (long)Math.Ceiling(elapsedSec);
+            remaining -= (int)Math.Min(elapsedCeil, (long)int.MaxValue);
             if (remaining < 0) remaining = 0;
             Store.SetRemaining(remaining);
             return remaining == 0;
@@ -92,10 +103,10 @@ namespace PCLock
             if (lockForm != null) return;   // 锁屏期间不计时
             remaining--;
             // 用范围判断而非精确相等，避免 Timer 精度漂移跳过提醒
-            if (!warned5 && remaining <= 300) { Warn("电脑还剩 5 分钟使用时间"); warned5 = true; }
-            if (!warned1 && remaining <= 60) { Warn("电脑还剩 1 分钟使用时间"); warned1 = true; }
+            if (!warned5 && remaining <= Constants.Warn5MinSec) { Warn("电脑还剩 5 分钟使用时间"); warned5 = true; }
+            if (!warned1 && remaining <= Constants.Warn1MinSec) { Warn("电脑还剩 1 分钟使用时间"); warned1 = true; }
             if (remaining <= 0) { LockNow(); return; }
-            if (remaining % 15 == 0)
+            if (remaining % Constants.PersistIntervalSec == 0)
             {
                 Store.SetRemaining(remaining);
                 Store.SetLastSeenUtc(DateTime.UtcNow.Ticks);
@@ -164,10 +175,10 @@ namespace PCLock
         {
             while (!stopping)
             {
-                Thread.Sleep(3000);
+                Thread.Sleep(Constants.GuardCheckIntervalMs);
                 if (stopping) break;
                 bool wdAlive = true;
-                try { Mutex.OpenExisting(WatchMutexName); }
+                try { Mutex.OpenExisting(Constants.WatchMutexName); }
                 catch (WaitHandleCannotBeOpenedException) { wdAlive = false; }
                 catch (Exception) { wdAlive = true; }
                 if (!wdAlive)
@@ -202,7 +213,7 @@ namespace PCLock
                 try
                 {
                     ProcessStartInfo psi = new ProcessStartInfo("schtasks",
-                        "/Create /F /SC ONLOGON /RL HIGHEST /TN \"" + TaskName + "\" /TR \"" + exe + "\"");
+                        "/Create /F /SC ONLOGON /RL HIGHEST /TN \"" + Constants.TaskName + "\" /TR \"" + exe + "\"");
                     psi.CreateNoWindow = true;
                     psi.UseShellExecute = false;
                     using (Process p = Process.Start(psi))
@@ -246,10 +257,12 @@ namespace PCLock
                     Store.SetRemaining(remaining);
                     Store.SetLastSeenUtc(0);
                 }
-                EventWaitHandle stop = null;
-                try { stop = EventWaitHandle.OpenExisting(StopEventName); }
-                catch (Exception) { }
-                if (stop != null) stop.Set();   // 通知看门狗自行退出
+                // 通知看门狗自行退出（使用构造时创建/打开的事件对象）
+                if (stopEvent != null)
+                {
+                    try { stopEvent.Set(); }
+                    catch { }
+                }
             }
             catch (Exception) { }
 
@@ -259,7 +272,7 @@ namespace PCLock
                 try
                 {
                     ProcessStartInfo psi = new ProcessStartInfo("schtasks",
-                        "/Delete /F /TN \"" + TaskName + "\"");
+                        "/Delete /F /TN \"" + Constants.TaskName + "\"");
                     psi.CreateNoWindow = true;
                     psi.UseShellExecute = false;
                     using (Process p = Process.Start(psi)) { p.WaitForExit(5000); }
@@ -279,6 +292,12 @@ namespace PCLock
             }
 
             Protection.UnprotectSelf();
+            // 释放停止事件
+            if (stopEvent != null)
+            {
+                try { stopEvent.Close(); }
+                catch { }
+            }
             Environment.Exit(0);
         }
     }

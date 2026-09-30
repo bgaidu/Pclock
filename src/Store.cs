@@ -6,7 +6,7 @@ using Microsoft.Win32;
 namespace PCLock
 {
     /// <summary>
-    /// 设置持久化（HKLM\SOFTWARE\PCLock，无权限时退回 HKCU）。
+    /// 设置持久化（HKLM\SOFTWARE\PCLock，要求管理员权限）。
     /// LockFlag 持久化是实现"重启仍锁"的关键。
     /// </summary>
     public static class Store
@@ -17,30 +17,27 @@ namespace PCLock
         {
             if (root != null) return;
 
-            // 尝试 HKLM（管理员），失败退回 HKCU
-            if (root == null)
+            // 必须使用 HKLM（需要管理员权限），失败直接抛异常
+            // 程序清单已声明 requireAdministrator，正常情况下必定成功
+            try
             {
-                try { root = Registry.LocalMachine.CreateSubKey(App.RegPath); }
-                catch { root = null; }
+                root = Registry.LocalMachine.CreateSubKey(Constants.RegPath);
             }
-            if (root == null)
+            catch (Exception ex)
             {
-                try { root = Registry.CurrentUser.CreateSubKey(App.RegPath); }
-                catch { root = null; }
-            }
-            if (root == null)
                 throw new InvalidOperationException(
-                    "Cannot open registry key under " + App.RegPath);
+                    "无法创建/打开注册表键 HKLM\\" + Constants.RegPath + "。请以管理员身份运行。", ex);
+            }
 
             try
             {
                 if (GetInt("FirstRunDone", 0) == 0)
                 {
-                    SetStr("PinHash", Hash("1234", "Salt"));          // 家长PIN默认 1234
-                    SetStr("UnPinHash", Hash("1234", "USalt"));       // 卸载密码默认 1234
-                    SetInt("DurationMinutes", 60);
+                    SetStr("PinHash", Hash(Constants.DefaultPin, "Salt"));          // 家长PIN默认 1234
+                    SetStr("UnPinHash", Hash(Constants.DefaultUninstallPin, "USalt"));       // 卸载密码默认 1234
+                    SetInt("DurationMinutes", Constants.DefaultDurationMinutes);
                     SetInt("LockFlag", 0);
-                    SetInt("RemainingSeconds", 60 * 60);
+                    SetInt("RemainingSeconds", Constants.DefaultDurationMinutes * 60);
                     SetLong("LastSeenUtc", 0);
                     SetInt("FirstRunDone", 1);
                 }
@@ -142,14 +139,14 @@ namespace PCLock
         /// <summary>卸载时清除全部痕迹</summary>
         public static void RemoveAll()
         {
-            try { Registry.LocalMachine.DeleteSubKeyTree(App.RegPath); } catch (Exception) { }
-            try { Registry.CurrentUser.DeleteSubKeyTree(App.RegPath); } catch (Exception) { }
+            try { Registry.LocalMachine.DeleteSubKeyTree(Constants.RegPath); } catch (Exception) { }
+            try { Registry.CurrentUser.DeleteSubKeyTree(Constants.RegPath); } catch (Exception) { }
             try
             {
                 using (RegistryKey k = Registry.LocalMachine.OpenSubKey(
                     "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", true))
                 {
-                    if (k != null) k.DeleteValue("PCLock", false);
+                    if (k != null) k.DeleteValue(Constants.TaskName, false);
                 }
             }
             catch (Exception) { }

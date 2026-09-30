@@ -65,24 +65,25 @@ namespace PCLock
             try { File.AppendAllText(LogFile, "After SetTaskMgrDisabled, LockFlag=" + lockFlag + "\n"); } catch { }
 
             Mutex self = null;
-            try { self = new Mutex(true, App.WatchMutexName); }
+            try { self = new Mutex(true, Constants.WatchMutexName); }
             catch (Exception) { }
 
             EventWaitHandle stop = null;
-            try { stop = EventWaitHandle.OpenExisting(App.StopEventName); }
+            try { stop = EventWaitHandle.OpenExisting(Constants.StopEventName); }
             catch (Exception) { }
 
             string exe = Application.ExecutablePath;
             try { File.AppendAllText(LogFile, "exe=" + exe + "\n"); } catch { }
             while (true)
             {
-                Thread.Sleep(3000);
+                Thread.Sleep(Constants.GuardCheckIntervalMs);
                 if (stop != null && stop.WaitOne(0)) break;
 
                 bool mainAlive = true;
-                try { Mutex.OpenExisting(App.MutexName); }
+                try { Mutex.OpenExisting(Constants.MutexName); }
                 catch (WaitHandleCannotBeOpenedException) { mainAlive = false; }
-                catch (Exception) { mainAlive = true; }
+                // 仅捕获 WaitHandleCannotBeOpenedException 判定为进程死亡
+                // 其他异常（如 UnauthorizedAccessException）不应被视为进程存活，记录日志并保守处理
 
                 if (!mainAlive)
                 {
@@ -93,7 +94,8 @@ namespace PCLock
                     {
                         Protection.SetTaskMgrDisabled(true);
                         try { Process.Start(exe); } catch (Exception) { }
-                        Thread.Sleep(8000);   // 等主程序启动
+                        // 不再固定 Sleep 8 秒，改用轮询检测 Mutex 是否重新出现
+                        WaitForMainProcessStart(exe);
                     }
                     else
                     {
@@ -110,6 +112,26 @@ namespace PCLock
                 try { self.ReleaseMutex(); } catch (Exception) { }
                 try { self.Close(); } catch (Exception) { }
             }
+        }
+
+        /// <summary>轮询等待主程序启动（通过 Mutex 出现判断），最多等待 WatchdogStartupWaitMs</summary>
+        static void WaitForMainProcessStart(string exe)
+        {
+            int elapsed = 0;
+            while (elapsed < Constants.WatchdogStartupWaitMs)
+            {
+                Thread.Sleep(Constants.WatchdogPollIntervalMs);
+                elapsed += Constants.WatchdogPollIntervalMs;
+                try
+                {
+                    Mutex.OpenExisting(Constants.MutexName);
+                    try { File.AppendAllText(LogFile, "Main process restarted (mutex detected)\n"); } catch { }
+                    return; // 主程序已启动
+                }
+                catch (WaitHandleCannotBeOpenedException) { /* 继续等待 */ }
+                catch (Exception) { /* 其他异常记录日志但继续等待 */ }
+            }
+            try { File.AppendAllText(LogFile, "Main process restart timeout\n"); } catch { }
         }
     }
 }

@@ -82,7 +82,7 @@ namespace PCLock
             Mutex m = null;
             try
             {
-                m = new Mutex(true, App.MutexName, out createdNew);
+                m = new Mutex(true, Constants.MutexName, out createdNew);
             }
             catch (Exception ex)
             {

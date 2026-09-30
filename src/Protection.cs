@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using Microsoft.Win32;
 
 namespace PCLock
@@ -27,7 +28,11 @@ namespace PCLock
         {
             try
             {
-                byte[] everyone = new byte[] { 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0 }; // S-1-1-0 (Everyone)
+                // 使用 WellKnownSidType.WorldSid (S-1-1-0 Everyone) 动态获取 SID，避免硬编码
+                var everyoneSid = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
+                byte[] everyone = new byte[everyoneSid.BinaryLength];
+                everyoneSid.GetBinaryForm(everyone, 0);
+
                 uint denyMask = MASK_TERMINATE | MASK_WRITE_DAC;
                 uint allowMask = MASK_ALL & ~denyMask;
                 int aceSize = 8 + everyone.Length;
@@ -40,8 +45,8 @@ namespace PCLock
                 sd[22] = (byte)(aclSize & 0xFF);
                 sd[23] = (byte)((aclSize >> 8) & 0xFF);
                 sd[24] = 2;                                  // 2 个 ACE
-                WriteAce(sd, 28, 1, denyMask, everyone);             // 拒绝
-                WriteAce(sd, 28 + aceSize, 0, allowMask, everyone);  // 允许其余权限
+                WriteAce(sd, 28, 1, denyMask, everyone);             // 拒绝 ACE (type=1 ACCESS_DENIED_ACE_TYPE)
+                WriteAce(sd, 28 + aceSize, 0, allowMask, everyone);  // 允许 ACE (type=0 ACCESS_ALLOWED_ACE_TYPE)
                 SetKernelObjectSecurity(GetCurrentProcess(), DACL_SECURITY_INFORMATION, sd);
             }
             catch (Exception) { }

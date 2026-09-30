@@ -29,7 +29,7 @@ namespace PCLock
             box.Location = new Point(16, 42);
             box.Width = 290;
             box.PasswordChar = '*';
-            box.MaxLength = 20;
+            box.MaxLength = Constants.PinMaxLength;
 
             Label err = new Label();
             err.ForeColor = Color.Firebrick;
@@ -67,15 +67,15 @@ namespace PCLock
                     fails++;
                     box.Text = "";
                     box.Focus();
-                    if (fails >= 5)
+                    if (fails >= Constants.PinMaxFails)
                     {
-                        cooldownUntil = DateTime.Now.AddSeconds(30);
+                        cooldownUntil = DateTime.Now.AddSeconds(Constants.PinCooldownSec);
                         DialogResult = DialogResult.Cancel;
                         Close();
                     }
                     else
                     {
-                        err.Text = "密码错误（还可尝试 " + (5 - fails) + " 次）";
+                        err.Text = "密码错误（还可尝试 " + (Constants.PinMaxFails - fails) + " 次）";
                     }
                 }
             };
@@ -109,10 +109,10 @@ namespace PCLock
             gb.Location = new Point(15, 15);
             gb.Size = new Size(440, 60);
             string[] names = new string[] { "15", "30", "45", "60", "90", "120" };
-            int[] mins = new int[] { 15, 30, 45, 60, 90, 120 };
-            RadioButton[] rbs = new RadioButton[6];
+            int[] mins = Constants.AllowedDurations;
+            RadioButton[] rbs = new RadioButton[mins.Length];
             int cur = Store.GetDurationMinutes();
-            for (int i = 0; i < 6; i++)
+            for (int i = 0; i < mins.Length; i++)
             {
                 rbs[i] = new RadioButton();
                 rbs[i].Text = names[i] + "分";
@@ -160,9 +160,9 @@ namespace PCLock
             btnPin.Size = new Size(110, 28);
             btnPin.Click += delegate
             {
-                if (pin1.Text.Length < 4)
+                if (pin1.Text.Length < Constants.PinMinLength)
                 {
-                    MessageBox.Show(this, "PIN 至少 4 位。", "电脑锁");
+                    MessageBox.Show(this, "PIN 至少 " + Constants.PinMinLength + " 位。", "电脑锁");
                     return;
                 }
                 if (pin1.Text != pin2.Text)
@@ -198,9 +198,9 @@ namespace PCLock
             btnUn.Size = new Size(110, 28);
             btnUn.Click += delegate
             {
-                if (up1.Text.Length < 4)
+                if (up1.Text.Length < Constants.PinMinLength)
                 {
-                    MessageBox.Show(this, "卸载密码至少 4 位。", "电脑锁");
+                    MessageBox.Show(this, "卸载密码至少 " + Constants.PinMinLength + " 位。", "电脑锁");
                     return;
                 }
                 if (up1.Text != up2.Text)
@@ -273,7 +273,7 @@ namespace PCLock
             Controls.Add(btnRemove);
 
             Label tip = new Label();
-            tip.Text = "说明：锁屏后需全部答对 10 道口算题（答错清零重来），或由家长输入 PIN 解锁。";
+            tip.Text = "说明：锁屏后需全部答对 " + Constants.TotalQuestions + " 道口算题（答错清零重来），或由家长输入 PIN 解锁。";
             tip.ForeColor = Color.Gray;
             tip.AutoSize = true;
             tip.Location = new Point(15, 400);
@@ -286,7 +286,7 @@ namespace PCLock
             b.Location = new Point(x, y);
             b.Width = 120;
             b.PasswordChar = '*';
-            b.MaxLength = 20;
+            b.MaxLength = Constants.PinMaxLength;
             return b;
         }
 
