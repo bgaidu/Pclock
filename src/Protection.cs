@@ -66,9 +66,18 @@ namespace PCLock
         {
             try
             {
-                byte[] sd = new byte[20];
-                sd[0] = 1;
-                sd[2] = 0x04; sd[3] = 0x80;   // SE_DACL_PRESENT 但 DACL 指针为空 = 不限制
+                // 创建含空 ACL 的 SD：20 字节 header + 8 字节空 ACL（无 ACE）
+                // Dacl 偏移 = 20，ACL_REVISION = 2，ACE 数 = 0
+                byte[] sd = new byte[28];
+                sd[0] = 1;                                   // SECURITY_DESCRIPTOR_REVISION
+                sd[2] = 0x04; sd[3] = 0x80;                  // SE_DACL_PRESENT | SE_SELF_RELATIVE
+                sd[16] = 20;                                 // Dacl 偏移 = 20
+                sd[20] = 2;                                  // ACL_REVISION
+                // aclSize = 8 (无 ACE)，低字节 sd[22]=8, 高字节 sd[23]=0
+                sd[22] = 8;
+                sd[23] = 0;
+                sd[24] = 0;                                  // 0 个 ACE
+                sd[25] = 0;
                 SetKernelObjectSecurity(GetCurrentProcess(), DACL_SECURITY_INFORMATION, sd);
             }
             catch (Exception) { }

@@ -26,6 +26,7 @@ namespace PCLock
         LockForm lockForm;
         int remaining;          // 剩余秒数
         bool stopping;
+        bool warned5, warned1; // 本轮是否已弹过 5 分钟 / 1 分钟提醒
         Thread guardThread;
 
         public App()
@@ -90,8 +91,9 @@ namespace PCLock
         {
             if (lockForm != null) return;   // 锁屏期间不计时
             remaining--;
-            if (remaining == 300) Warn("电脑还剩 5 分钟使用时间");
-            if (remaining == 60) Warn("电脑还剩 1 分钟使用时间");
+            // 用范围判断而非精确相等，避免 Timer 精度漂移跳过提醒
+            if (!warned5 && remaining <= 300) { Warn("电脑还剩 5 分钟使用时间"); warned5 = true; }
+            if (!warned1 && remaining <= 60) { Warn("电脑还剩 1 分钟使用时间"); warned1 = true; }
             if (remaining <= 0) { LockNow(); return; }
             if (remaining % 15 == 0)
             {
@@ -145,6 +147,7 @@ namespace PCLock
             remaining = Store.GetDurationMinutes() * 60;
             Store.SetRemaining(remaining);
             Store.SetLastSeenUtc(DateTime.UtcNow.Ticks);   // 新会话从现在起算
+            warned5 = warned1 = false;                     // 重置提醒标志
             Protection.SetTaskMgrDisabled(false);
         }
 
@@ -153,6 +156,7 @@ namespace PCLock
             remaining = Store.GetDurationMinutes() * 60;
             Store.SetRemaining(remaining);
             Store.SetLastSeenUtc(DateTime.UtcNow.Ticks);
+            warned5 = warned1 = false;                     // 重置提醒标志
         }
 
         /// <summary>守护线程：看门狗进程被杀 → 重新拉起；锁屏期间持续确保任务管理器被禁用</summary>
@@ -198,7 +202,7 @@ namespace PCLock
                 try
                 {
                     ProcessStartInfo psi = new ProcessStartInfo("schtasks",
-                        "/Create /F /SC ONLOGON /RL HIGHEST /TN \"" + TaskName + "\" /TR \"\\\"" + exe + "\\\"\"");
+                        "/Create /F /SC ONLOGON /RL HIGHEST /TN \"" + TaskName + "\" /TR \"" + exe + "\"");
                     psi.CreateNoWindow = true;
                     psi.UseShellExecute = false;
                     using (Process p = Process.Start(psi))

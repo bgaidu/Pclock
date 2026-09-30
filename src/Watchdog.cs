@@ -14,17 +14,30 @@ namespace PCLock
     /// </summary>
     public static class Watchdog
     {
+        static string LogDir
+        {
+            get { return AppDomain.CurrentDomain.BaseDirectory; }
+        }
+        static string LogFile
+        {
+            get { return System.IO.Path.Combine(LogDir, "watchdog_log.txt"); }
+        }
+        static string CrashFile
+        {
+            get { return System.IO.Path.Combine(LogDir, "watchdog_crash.log"); }
+        }
+
         public static void Run()
         {
             try
             {
-                File.WriteAllText("watchdog_log.txt", "Run started\n");
+                File.WriteAllText(LogFile, "Run started\n");
                 RunInternal();
-                File.WriteAllText("watchdog_log.txt", "RunInternal returned\n");
+                File.WriteAllText(LogFile, "RunInternal returned\n");
             }
             catch (Exception ex)
             {
-                try { File.WriteAllText("watchdog_crash.log", ex.ToString()); } catch { }
+                try { File.WriteAllText(CrashFile, ex.ToString()); } catch { }
                 Environment.Exit(1);
             }
         }
@@ -32,24 +45,24 @@ namespace PCLock
         static void RunInternal()
         {
             // 必须先初始化注册表访问（watchdog 是独立进程，Store.root 在此为空）
-            try { File.AppendAllText("watchdog_log.txt", "Store.Init\n"); } catch { }
+            try { File.AppendAllText(LogFile, "Store.Init\n"); } catch { }
             try { Store.Init(); }
             catch (Exception ex)
             {
-                try { File.AppendAllText("watchdog_log.txt", "Store.Init FAILED: " + ex.Message + "\n"); } catch { }
+                try { File.AppendAllText(LogFile, "Store.Init FAILED: " + ex.Message + "\n"); } catch { }
             }
 
-            try { File.AppendAllText("watchdog_log.txt", "ProtectSelf\n"); } catch { }
+            try { File.AppendAllText(LogFile, "ProtectSelf\n"); } catch { }
             Protection.ProtectSelf();
-            try { File.AppendAllText("watchdog_log.txt", "SetTaskMgrDisabled\n"); } catch { }
+            try { File.AppendAllText(LogFile, "SetTaskMgrDisabled\n"); } catch { }
             int lockFlag = 0;
             try { lockFlag = Store.GetLockFlag(); }
             catch (Exception ex)
             {
-                try { File.AppendAllText("watchdog_log.txt", "GetLockFlag FAILED: " + ex.Message + "\n"); } catch { }
+                try { File.AppendAllText(LogFile, "GetLockFlag FAILED: " + ex.Message + "\n"); } catch { }
             }
             Protection.SetTaskMgrDisabled(lockFlag == 1);
-            try { File.AppendAllText("watchdog_log.txt", "After SetTaskMgrDisabled, LockFlag=" + lockFlag + "\n"); } catch { }
+            try { File.AppendAllText(LogFile, "After SetTaskMgrDisabled, LockFlag=" + lockFlag + "\n"); } catch { }
 
             Mutex self = null;
             try { self = new Mutex(true, App.WatchMutexName); }
@@ -60,7 +73,7 @@ namespace PCLock
             catch (Exception) { }
 
             string exe = Application.ExecutablePath;
-            try { File.AppendAllText("watchdog_log.txt", "exe=" + exe + "\n"); } catch { }
+            try { File.AppendAllText(LogFile, "exe=" + exe + "\n"); } catch { }
             while (true)
             {
                 Thread.Sleep(3000);
@@ -73,8 +86,10 @@ namespace PCLock
 
                 if (!mainAlive)
                 {
-                    try { File.AppendAllText("watchdog_log.txt", "mainAlive=false, LockFlag=" + Store.GetLockFlag() + "\n"); } catch { }
-                    if (Store.GetLockFlag() == 1)
+                    int flag = 0;
+                    try { flag = Store.GetLockFlag(); } catch { }
+                    try { File.AppendAllText(LogFile, "mainAlive=false, LockFlag=" + flag + "\n"); } catch { }
+                    if (flag == 1)
                     {
                         Protection.SetTaskMgrDisabled(true);
                         try { Process.Start(exe); } catch (Exception) { }
@@ -82,13 +97,13 @@ namespace PCLock
                     }
                     else
                     {
-                        try { File.AppendAllText("watchdog_log.txt", "breaking\n"); } catch { }
+                        try { File.AppendAllText(LogFile, "breaking\n"); } catch { }
                         break;   // 主程序已正常退出，跟随退出
                     }
                 }
             }
 
-            try { File.AppendAllText("watchdog_log.txt", "UnprotectSelf\n"); } catch { }
+            try { File.AppendAllText(LogFile, "UnprotectSelf\n"); } catch { }
             Protection.UnprotectSelf();
             if (self != null)
             {

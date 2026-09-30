@@ -7,6 +7,9 @@ namespace PCLock
     /// <summary>通用密码验证小对话框（家长PIN / 卸载密码共用）</summary>
     public class PinDialog : Form
     {
+        // 跨对话框实例的全局冷却：反复打开→失败→关闭→重开无法绕过
+        static DateTime cooldownUntil = DateTime.MinValue;
+
         public PinDialog(string title, string prompt, Func<string, bool> verify)
         {
             Text = title;
@@ -26,6 +29,7 @@ namespace PCLock
             box.Location = new Point(16, 42);
             box.Width = 290;
             box.PasswordChar = '*';
+            box.MaxLength = 20;
 
             Label err = new Label();
             err.ForeColor = Color.Firebrick;
@@ -45,6 +49,14 @@ namespace PCLock
             int fails = 0;
             ok.Click += delegate
             {
+                // 全局冷却：上一次 5 连败后 30 秒内所有 PIN 对话框均拒绝输入
+                if (DateTime.Now < cooldownUntil)
+                {
+                    int left = (int)Math.Ceiling((cooldownUntil - DateTime.Now).TotalSeconds);
+                    err.Text = "尝试次数过多，请 " + left + " 秒后再试";
+                    box.Text = "";
+                    return;
+                }
                 if (verify(box.Text))
                 {
                     DialogResult = DialogResult.OK;
@@ -55,11 +67,15 @@ namespace PCLock
                     fails++;
                     box.Text = "";
                     box.Focus();
-                    err.Text = "密码错误（已尝试 " + fails + " 次）";
                     if (fails >= 5)
                     {
+                        cooldownUntil = DateTime.Now.AddSeconds(30);
                         DialogResult = DialogResult.Cancel;
                         Close();
+                    }
+                    else
+                    {
+                        err.Text = "密码错误（还可尝试 " + (5 - fails) + " 次）";
                     }
                 }
             };
@@ -270,6 +286,7 @@ namespace PCLock
             b.Location = new Point(x, y);
             b.Width = 120;
             b.PasswordChar = '*';
+            b.MaxLength = 20;
             return b;
         }
 

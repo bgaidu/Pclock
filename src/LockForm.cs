@@ -96,8 +96,11 @@ namespace PCLock
             pinBox.Location = new Point(20, 52);
             pinBox.Width = 330;
             pinBox.PasswordChar = '*';
+            pinBox.MaxLength = 20;
             pinBox.KeyPress += delegate(object s, KeyPressEventArgs e)
             {
+                // PIN 只能是数字：答案框也只接受数字，允许字母会导致 PIN 永远无法在锁屏界面输入
+                if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar)) e.Handled = true;
                 if (e.KeyChar == (char)13) TryParentPin();
             };
 
@@ -342,7 +345,7 @@ namespace PCLock
         [DllImport("kernel32.dll")]
         static extern IntPtr GetModuleHandle(string lpModuleName);
         [DllImport("user32.dll")]
-        static extern short GetKeyState(int nVirtKey);
+        static extern short GetAsyncKeyState(int nVirtKey);
 
         public LowLevelHook()
         {
@@ -353,13 +356,20 @@ namespace PCLock
 
         IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
-            if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN))
+            if (nCode >= 0)
             {
                 int vk = Marshal.ReadInt32(lParam);
-                bool alt = (GetKeyState(0x12) & 0x8000) != 0;
-                bool ctrl = (GetKeyState(0x11) & 0x8000) != 0;
+                bool isSysKey = (wParam == (IntPtr)WM_SYSKEYDOWN);
+                bool isKeyDown = (wParam == (IntPtr)WM_KEYDOWN);
+                bool alt = (GetAsyncKeyState(0x12) & 0x8000) != 0;
+                bool ctrl = (GetAsyncKeyState(0x11) & 0x8000) != 0;
+                bool shift = (GetAsyncKeyState(0x10) & 0x8000) != 0;
+
                 if (vk == 0x5B || vk == 0x5C) return (IntPtr)1;            // 左/右 Win 键
-                if (vk == 0x09 && alt) return (IntPtr)1;                   // Alt+Tab
+                // Alt+Tab：WM_SYSKEYDOWN 时 Tab 必然带 Alt，直接拦截
+                if (isSysKey && vk == 0x09) return (IntPtr)1;
+                // Shift+Tab：WM_KEYDOWN + Shift 按下
+                if (isKeyDown && vk == 0x09 && shift) return (IntPtr)1;
                 if (vk == 0x1B && (alt || ctrl)) return (IntPtr)1;         // Alt+Esc / Ctrl+Esc
                 if (alt && (vk >= 0x25 && vk <= 0x28)) return (IntPtr)1;   // Alt+方向键
             }

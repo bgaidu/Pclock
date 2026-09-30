@@ -91,3 +91,56 @@ pclock/
     ├── LockForm.cs    全屏锁屏界面 + 键盘钩子 + 答题/PIN 解锁
     └── SettingsForm.cs 家长设置 + PIN 验证对话框
 ```
+
+## 本副本修复记录（相对上游）
+
+### Bug 修复
+
+1. **(2026-09-30) 气泡提醒因 Timer 精度漂移可能跳过**（`App.cs`）
+   原代码用 `remaining == 300` / `remaining == 60` 精确匹配，Timer 精度可跳过中间值。
+   改为 `remaining <= 300` / `remaining <= 60` 范围判断 + `warned5` / `warned1` 标志位防重复，
+   在 `Unlock()` 和 `ResetRemaining()` 中重置标志。
+
+2. **(2026-09-30) 计划任务 `/TR` 参数多前导反斜杠**（`App.cs`）
+   原代码 `schtasks /TR "\" + exe + "\\"` 生成了 `\\C:\...\PCLock.exe\\`，
+   `schtasks` 不接受多前导 `\`。去掉多余转义，现在正确生成 `/TR "C:\Program Files\PCLock\PCLock.exe"`。
+
+3. **(2026-09-30) UnprotectSelf 安全描述符结构错误**（`Protection.cs`）
+   原代码构造 20 字节 SD 并设 `SE_DACL_PRESENT`，但 ACL 数据不存在，`Dacl` 偏移无效。
+   改为 28 字节（20 header + 8 字节空 ACL），正确设置 Dacl 偏移=20、ACL_REVISION=2、ACE 数=0。
+
+4. **(2026-09-30) 口算题可能凑不齐指定数量**（`MathUtil.cs`）
+   `NextBatch(count)` 中 2000 次循环用尽后直接返回，可能少于 count 道。
+   增加兜底 while 循环：不重复抽完后再允许重复，保证返回数量恒等于 count。
+
+5. **(2026-09-30) 看门狗日志用相对路径**（`Watchdog.cs`）
+   原代码 `File.WriteAllText("watchdog_log.txt", ...)` 写到当前工作目录。
+   改为 `AppDomain.CurrentDomain.BaseDirectory + "watchdog_log.txt"`，确保写入 EXE 同目录。
+
+6. **(2026-09-30) 看门狗 while 循环内 GetLockFlag 无异常保护**（`Watchdog.cs`）
+   `Store.GetLockFlag()` 可能因注册表异常抛出，直接放在 `if` 条件里会导致 while 异常退出。
+   先 try-catch 到局部变量 `flag`，再用 `flag == 1` 判断。
+
+7. **(2026-09-30) PIN 对话框无全局冷却机制**（`SettingsForm.cs`）
+   反复打开→失败 5 次→关闭→重开，可无限尝试。增加 `static cooldownUntil`，
+   5 连败后全局 30 秒冷却，跨对话框实例生效。
+
+8. **(2026-09-30) PIN 密码无长度上限**（`SettingsForm.cs`、`LockForm.cs`）
+   仅校验 `>=4` 位，无上限。三个 PIN 输入框均增加 `MaxLength = 20`。
+
+9. **(2026-09-30) 锁屏界面未拦截 Shift+Tab**（`LockForm.cs`）
+   原代码只检查 `alt` 键拦截 Alt+Tab，Shift+Tab 可绕过。
+   改为分别处理 `WM_SYSKEYDOWN`（Alt+Tab）和 `WM_KEYDOWN + shift`（Shift+Tab）。
+
+10. **(2026-09-30) 钩子回调 P/Invoke 函数未声明**（`LockForm.cs`）
+    原代码调用 `GetKeyState` 但无 `[DllImport]` 声明（编译必失败）。
+    改用已声明的 `GetAsyncKeyState`（low-level hook 中更可靠，不依赖线程输入队列），
+    删除多余的 `GetKeyState` 声明。
+
+11. **(2026-09-30) 锁屏 PIN 框允许输入非数字字符**（`LockForm.cs`）
+    答案框只接受数字，PIN 若包含字母则永远无法匹配。增加数字字符过滤。
+
+### 未改项
+
+- **锁屏期间 Timer 空转**（`App.cs`）：`OnTick` 首行 `lockForm != null` 即 `return`，开销可忽略。
+  加 `Stop()/Start()` 反而有进程崩溃后 Timer 永不自启的风险，保留当前设计。

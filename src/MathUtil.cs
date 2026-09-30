@@ -32,6 +32,17 @@ namespace PCLock
                 q.Answer = answer;
                 list.Add(q);
             }
+            // 兜底：题库组合不足以凑齐 count 道不重复题时，允许重复
+            // （4 种题型 × 数百组合，正常不会触发；保证返回数量一定等于 count）
+            while (list.Count < count)
+            {
+                int answer;
+                string text = NextQuestion(out answer);
+                MathQuestion q = new MathQuestion();
+                q.Text = text;
+                q.Answer = answer;
+                list.Add(q);
+            }
             return list;
         }
 
