@@ -2,6 +2,7 @@ using System;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Win32;
+using PCLockConstants = PCLock.Constants;  // 避免与 System.Security.Cryptography.Constants 冲突
 
 namespace PCLock
 {
@@ -21,23 +22,23 @@ namespace PCLock
             // 程序清单已声明 requireAdministrator，正常情况下必定成功
             try
             {
-                root = Registry.LocalMachine.CreateSubKey(Constants.RegPath);
+                root = Registry.LocalMachine.CreateSubKey(PCLockConstants.RegPath);
             }
             catch (Exception ex)
             {
                 throw new InvalidOperationException(
-                    "无法创建/打开注册表键 HKLM\\" + Constants.RegPath + "。请以管理员身份运行。", ex);
+                    "无法创建/打开注册表键 HKLM\\" + PCLockConstants.RegPath + "。请以管理员身份运行。", ex);
             }
 
             try
             {
                 if (GetInt("FirstRunDone", 0) == 0)
                 {
-                    SetStr("PinHash", Hash(Constants.DefaultPin, "Salt"));          // 家长PIN默认 1234
-                    SetStr("UnPinHash", Hash(Constants.DefaultUninstallPin, "USalt"));       // 卸载密码默认 1234
-                    SetInt("DurationMinutes", Constants.DefaultDurationMinutes);
+                    SetStr("PinHash", Hash(PCLockConstants.DefaultPin, "Salt"));          // 家长PIN默认 1234
+                    SetStr("UnPinHash", Hash(PCLockConstants.DefaultUninstallPin, "USalt"));       // 卸载密码默认 1234
+                    SetInt("DurationMinutes", PCLockConstants.DefaultDurationMinutes);
                     SetInt("LockFlag", 0);
-                    SetInt("RemainingSeconds", Constants.DefaultDurationMinutes * 60);
+                    SetInt("RemainingSeconds", PCLockConstants.DefaultDurationMinutes * 60);
                     SetLong("LastSeenUtc", 0);
                     SetInt("FirstRunDone", 1);
                 }
@@ -139,14 +140,14 @@ namespace PCLock
         /// <summary>卸载时清除全部痕迹</summary>
         public static void RemoveAll()
         {
-            try { Registry.LocalMachine.DeleteSubKeyTree(Constants.RegPath); } catch (Exception) { }
-            try { Registry.CurrentUser.DeleteSubKeyTree(Constants.RegPath); } catch (Exception) { }
+            try { Registry.LocalMachine.DeleteSubKeyTree(PCLockConstants.RegPath); } catch (Exception) { }
+            try { Registry.CurrentUser.DeleteSubKeyTree(PCLockConstants.RegPath); } catch (Exception) { }
             try
             {
                 using (RegistryKey k = Registry.LocalMachine.OpenSubKey(
                     "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", true))
                 {
-                    if (k != null) k.DeleteValue(Constants.TaskName, false);
+                    if (k != null) k.DeleteValue(PCLockConstants.TaskName, false);
                 }
             }
             catch (Exception) { }
