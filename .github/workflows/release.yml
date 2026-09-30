@@ -17,29 +17,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Check available compilers
-        shell: cmd
+      - name: List repository files
+        shell: pwsh
         run: |
-          echo === 检查 csc.exe ===
-          if exist "%WINDIR%\Microsoft.NET\Framework\v3.5\csc.exe" echo FOUND: Framework v3.5
-          if exist "%WINDIR%\Microsoft.NET\Framework64\v3.5\csc.exe" echo FOUND: Framework64 v3.5
-          if exist "%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe" echo FOUND: Framework v4.0
-          if exist "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" echo FOUND: Framework64 v4.0
-          echo === pclock 目录内容 ===
-          dir /s /b pclock
+          Write-Host "===== 仓库根目录 ====="
+          Get-ChildItem -Force | Select-Object Mode, Name
+          Write-Host ""
+          Write-Host "===== src 目录 ====="
+          Get-ChildItem -Recurse src | Select-Object FullName
 
       - name: Build PCLock.exe
         shell: cmd
         run: |
-          cd pclock
-
-          rem 选择可用的 csc.exe（优先 4.0，因为 GitHub runner 一定有）
           set CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
           if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe
-          if not exist "%CSC%" (
-            echo [错误] 找不到 csc.exe
-            exit /b 1
-          )
           echo 使用编译器: %CSC%
 
           "%CSC%" /nologo /target:winexe /out:PCLock.exe /win32manifest:app.manifest /optimize+ /codepage:65001 ^
@@ -61,10 +52,11 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
-          Copy-Item -Path "pclock\PCLock.exe" -Destination "release\" -Force
-          # 如果你有 app.manifest、README 等需要一起打包，取消下面注释并按需添加
-          # Copy-Item -Path "pclock\app.manifest" -Destination "release\" -Force
+          Copy-Item -Path "PCLock.exe" -Destination "release\" -Force
+          # 如需一起打包，可取消下面注释
+          # Copy-Item -Path "app.manifest" -Destination "release\" -Force
           # Copy-Item -Path "README.md" -Destination "release\" -Force
+          # Copy-Item -Path "LICENSE" -Destination "release\" -Force
           Compress-Archive -Path "release\*" -DestinationPath "PCLock-Release.zip" -Force
           Write-Host "===== 打包内容 ====="
           Get-ChildItem release
