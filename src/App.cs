@@ -203,36 +203,96 @@ namespace PCLock
             using (SettingsForm sf = new SettingsForm()) sf.ShowDialog();
         }
 
-        /// <summary>开机自启：优先创建"登录时运行、最高权限"的计划任务（无UAC弹窗），失败则退回 HKLM Run 键</summary>
+        /// <summary>
+        /// 开机自启：优先创建"登录时运行、最高权限"的计划任务（无UAC弹窗），失败则退回 HKLM Run 键。
+        /// 注意：schtasks /TR 参数中路径含空格时必须用引号包裹，且引号需要正确转义。
+        /// </summary>
         void EnsureStartup()
         {
+            string exe = Application.ExecutablePath;
+            bool taskCreated = false;
+
+            // 方法1：创建计划任务（登录时运行，最高权限）
             try
             {
-                string exe = Application.ExecutablePath;
-                bool ok = false;
-                try
+                // schtasks 的 /TR 参数：路径含空格时必须用引号包裹
+                // 在 ProcessStartInfo 中，参数中的引号需要转义为 \"
+                string arguments = "/Create /F /SC ONLOGON /RL HIGHEST /TN \"" + Constants.TaskName + "\" /TR \"" + exe + "\"";
+                
+                ProcessStartInfo psi = new ProcessStartInfo("schtasks", arguments);
+                psi.CreateNoWindow = true;
+                psi.UseShellExecute = false;
+                psi.RedirectStandardOutput = true;
+                psi.RedirectStandardError = true;
+                
+                using (Process p = Process.Start(psi))
                 {
-                    ProcessStartInfo psi = new ProcessStartInfo("schtasks",
-                        "/Create /F /SC ONLOGON /RL HIGHEST /TN \"" + Constants.TaskName + "\" /TR \"" + exe + "\"");
-                    psi.CreateNoWindow = true;
-                    psi.UseShellExecute = false;
-                    using (Process p = Process.Start(psi))
+                    string output = p.StandardOutput.ReadToEnd();
+                    string error = p.StandardError.ReadToEnd();
+                    p.WaitForExit(10000);
+                    
+                    if (p.ExitCode == 0)
                     {
-                        p.WaitForExit(10000);
-                        ok = (p.ExitCode == 0);
+                        taskCreated = true;
+                        Program.Log("EnsureStartup: 计划任务创建成功");
+                    }
+                    else
+                    {
+                        Program.Log("EnsureStartup: 计划任务创建失败，ExitCode=" + p.ExitCode);
+                        Program.Log("EnsureStartup: stdout=" + output);
+                        Program.Log("EnsureStartup: stderr=" + error);
                     }
                 }
-                catch (Exception) { }
-                if (!ok)
+            }
+            catch (Exception ex)
+            {
+                Program.Log("EnsureStartup: 计划任务创建异常: " + ex.Message);
+            }
+
+            // 方法2：回退到 HKLM Run 键
+            if (!taskCreated)
+            {
+                try
                 {
                     using (RegistryKey k = Registry.LocalMachine.CreateSubKey(
                         "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"))
                     {
-                        k.SetValue("PCLock", "\"" + Application.ExecutablePath + "\"");
+                        k.SetValue("PCLock", "\"" + exe + "\"");
+                        Program.Log("EnsureStartup: 已写入 HKLM Run 键回退");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Program.Log("EnsureStartup: HKLM Run 键写入失败: " + ex.Message);
+                }
+            }
+
+            // 验证：检查计划任务是否存在
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo("schtasks",
+                    "/Query /TN \"" + Constants.TaskName + "\"");
+                psi.CreateNoWindow = true;
+                psi.UseShellExecute = false;
+                psi.RedirectStandardOutput = true;
+                using (Process p = Process.Start(psi))
+                {
+                    string output = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit(5000);
+                    if (p.ExitCode == 0 && output.Contains(Constants.TaskName))
+                    {
+                        Program.Log("EnsureStartup: 验证计划任务存在");
+                    }
+                    else
+                    {
+                        Program.Log("EnsureStartup: 验证计划任务不存在！");
                     }
                 }
             }
-            catch (Exception) { }
+            catch (Exception ex)
+            {
+                Program.Log("EnsureStartup: 验证计划任务异常: " + ex.Message);
+            }
         }
 
         /// <summary>退出 / 卸载</summary>

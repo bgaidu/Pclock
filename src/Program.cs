@@ -12,7 +12,7 @@ namespace PCLock
             get { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "err.txt"); }
         }
 
-        static void Log(string msg)
+        internal static void Log(string msg)
         {
             try
             {
