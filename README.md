@@ -147,6 +147,44 @@ pclock/
 
 ## 更新日志
 
+### 2026-10-02 — v1.3.0 (Win10/11 兼容性修复)
+
+#### 🔧 兼容性修复（Win7 完全兼容）
+
+1. **(2026-10-02) 高 DPI 显示支持** (`Program.cs`)
+   - **问题**：Win10/11 高 DPI 显示器上锁屏界面模糊、布局错乱
+   - **修复**：Win8.1+ 使用 `SetProcessDpiAwareness(PerMonitor)`，Win7 回退到 `SetProcessDPIAware()`
+   - **Win7 兼容**：自动检测 API 存在性，Win7 使用系统 DPI 感知
+
+2. **(2026-10-02) 键盘钩子结构体优化** (`LockForm.cs`)
+   - **问题**：原代码用 `Marshal.ReadInt32(lParam)` 直接读取 vkCode，结构变更时易出错
+   - **修复**：改用 `KBDLLHOOKSTRUCT` 结构体解析键盘数据
+   - **Win7 兼容**：`KBDLLHOOKSTRUCT` 从 Win2000 就存在，完全兼容
+
+3. **(2026-10-02) 计划任务延迟触发** (`App.cs`)
+   - **问题**：Win10/11 快速启动后 `ONLOGON` 任务可能不触发
+   - **修复**：添加 `/DELAY 0000:30` 参数，登录后延迟 30 秒触发
+   - **Win7 兼容**：`/DELAY` 参数从 Win7 开始支持
+
+4. **(2026-10-02) DACL 权限掩码更新** (`Protection.cs`)
+   - **问题**：Win10/11 新增进程访问权限位，原 `MASK_ALL` 未覆盖
+   - **修复**：添加 `PROCESS_SET_LIMITED_INFORMATION` 等新增权限位
+   - **Win7 兼容**：新增权限位在 Win7 上无效但不会报错
+
+#### 📊 兼容性矩阵
+
+| 功能 | Win7 | Win10 | Win11 |
+|------|------|-------|-------|
+| 基本运行 | OK | OK | OK |
+| 开机自启 | OK | OK | OK |
+| 注册表持久化 | OK | OK | OK |
+| 进程 DACL 保护 | OK | OK | OK |
+| 键盘钩子拦截 | OK | OK | OK |
+| 任务管理器禁用 | OK | OK | OK |
+| 高 DPI 显示 | OK (回退) | OK | OK |
+
+---
+
 ### 2026-10-01 — v1.2.0 (修复开机自启动失败)
 
 #### 🐛 Bug 修复
