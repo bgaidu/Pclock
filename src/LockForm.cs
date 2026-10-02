@@ -329,7 +329,20 @@ namespace PCLock
     {
         const int WH_KEYBOARD_LL = 13;
         const int WM_KEYDOWN = 0x0100;
+        const int WM_KEYUP = 0x0101;
         const int WM_SYSKEYDOWN = 0x0104;
+        const int WM_SYSKEYUP = 0x0105;
+
+        // KBDLLHOOKSTRUCT 结构体（Win2000+ 均支持，Win7 完全兼容）
+        [StructLayout(LayoutKind.Sequential)]
+        struct KBDLLHOOKSTRUCT
+        {
+            public uint vkCode;
+            public uint scanCode;
+            public uint flags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
 
         delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
         IntPtr hHook;
@@ -357,9 +370,13 @@ namespace PCLock
         {
             if (nCode >= 0)
             {
-                int vk = Marshal.ReadInt32(lParam);
+                // 使用 KBDLLHOOKSTRUCT 获取按键信息（Win7 完全兼容）
+                KBDLLHOOKSTRUCT kb = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
+                int vk = (int)kb.vkCode;
                 bool isSysKey = (wParam == (IntPtr)WM_SYSKEYDOWN);
                 bool isKeyDown = (wParam == (IntPtr)WM_KEYDOWN);
+
+                // 通过 GetAsyncKeyState 检测修饰键状态（在钩子回调中调用是安全的）
                 bool alt = (GetAsyncKeyState(0x12) & 0x8000) != 0;
                 bool ctrl = (GetAsyncKeyState(0x11) & 0x8000) != 0;
                 bool shift = (GetAsyncKeyState(0x10) & 0x8000) != 0;

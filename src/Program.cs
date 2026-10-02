@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -7,6 +8,18 @@ namespace PCLock
 {
     static class Program
     {
+        // === DPI 感知相关 ===
+        [DllImport("user32.dll")]
+        static extern bool SetProcessDPIAware();
+
+        [DllImport("shcore.dll")]
+        static extern int SetProcessDpiAwareness(int awareness);
+
+        // DPI 感知级别
+        const int PROCESS_DPI_UNAWARE = 0;
+        const int PROCESS_SYSTEM_DPI_AWARE = 1;
+        const int PROCESS_PER_MONITOR_DPI_AWARE = 2;
+
         static string LogPath
         {
             get { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "err.txt"); }
@@ -20,6 +33,46 @@ namespace PCLock
                     "[" + DateTime.Now.ToString("HH:mm:ss.fff") + "] " + msg + Environment.NewLine);
             }
             catch { }
+        }
+
+        /// <summary>
+        /// 设置 DPI 感知，Win8.1+ 使用 PerMonitor，Win7 回退到系统 DPI 感知
+        /// </summary>
+        static void SetDpiAwareness()
+        {
+            try
+            {
+                // Win8.1+ 尝试设置 Per-Monitor DPI 感知
+                int result = SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+                if (result == 0)
+                {
+                    Log("DPI: Per-Monitor DPI Aware (Win8.1+)");
+                    return;
+                }
+            }
+            catch (EntryPointNotFoundException)
+            {
+                // Win7 上不存在此 API，回退
+            }
+            catch (DllNotFoundException)
+            {
+                // Win7 上不存在 shcore.dll，回退
+            }
+            catch (Exception ex)
+            {
+                Log("DPI: SetProcessDpiAwareness failed: " + ex.Message);
+            }
+
+            try
+            {
+                // Win7/Vista+ 回退：系统 DPI 感知
+                bool ok = SetProcessDPIAware();
+                Log("DPI: System DPI Aware (Win7 fallback), result=" + ok);
+            }
+            catch (Exception ex)
+            {
+                Log("DPI: SetProcessDPIAware failed: " + ex.Message);
+            }
         }
 
         static void OnUnhandled(object sender, System.UnhandledExceptionEventArgs e)
@@ -97,6 +150,9 @@ namespace PCLock
 
             try
             {
+                // 设置 DPI 感知（必须在创建窗口前调用）
+                SetDpiAwareness();
+
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 Log("WinForms init done");

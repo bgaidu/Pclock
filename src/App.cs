@@ -216,8 +216,8 @@ namespace PCLock
             try
             {
                 // schtasks 的 /TR 参数：路径含空格时必须用引号包裹
-                // 在 ProcessStartInfo 中，参数中的引号需要转义为 \"
-                string arguments = "/Create /F /SC ONLOGON /RL HIGHEST /TN \"" + Constants.TaskName + "\" /TR \"" + exe + "\"";
+                // /DELAY 0000:30 表示登录后延迟 30 秒触发（Win7+ 均支持）
+                string arguments = "/Create /F /SC ONLOGON /RL HIGHEST /DELAY 0000:30 /TN \"" + Constants.TaskName + "\" /TR \"" + exe + "\"";
                 
                 ProcessStartInfo psi = new ProcessStartInfo("schtasks", arguments);
                 psi.CreateNoWindow = true;

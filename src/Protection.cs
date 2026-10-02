@@ -14,9 +14,14 @@ namespace PCLock
     public static class Protection
     {
         const int DACL_SECURITY_INFORMATION = 0x00000004;
+        // Win7 进程访问权限
         const uint MASK_TERMINATE = 0x00000001;
         const uint MASK_WRITE_DAC = 0x00040000;
-        const uint MASK_ALL = 0x001FFFFF;
+        // Win10/11 新增权限位（在 Win7 上设置无效但不会报错）
+        const uint PROCESS_SET_LIMITED_INFORMATION = 0x00002000;
+        const uint PROCESS_SET_QUOTA = 0x00000100;
+        // 完整的进程访问权限掩码（覆盖 Win7/10/11）
+        const uint MASK_ALL = 0x001FFFFF | PROCESS_SET_LIMITED_INFORMATION | PROCESS_SET_QUOTA;
 
         [DllImport("advapi32.dll", SetLastError = true)]
         static extern bool SetKernelObjectSecurity(IntPtr Handle, int SecurityInformation, byte[] pSecurityDescriptor);
