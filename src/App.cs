@@ -81,20 +81,40 @@ namespace PCLock
         /// 上次运行为硬断电中断时，按 UTC 墙钟折算扣除离线期间的时长，
         /// 防止直接断电"冻结"倒计时。时钟回拨时忽略（不能借此加时）。
         /// 返回时长是否已被扣到 0（需要开机即锁屏）。
+        /// 
+        /// 注意：正常关机/重启时 Shutdown 会设置 LastSeenUtc=0，
+        /// 此时 DeductOffline 直接返回 false，不会触发锁屏。
         /// </summary>
         bool DeductOffline()
         {
             long last = Store.GetLastSeenUtc();
-            if (last <= 0) return false;   // 上次是正常退出（时间戳已清），不扣
+            if (last <= 0)
+            {
+                Program.Log("DeductOffline: LastSeenUtc=0, 正常退出不扣除");
+                return false;   // 上次是正常退出（时间戳已清），不扣
+            }
             
             // 使用浮点除法并向上取整，避免整数除法向下取整导致少扣时间
             double elapsedSec = (DateTime.UtcNow.Ticks - last) / (double)TimeSpan.TicksPerSecond;
-            if (elapsedSec <= 0) return false;
+            if (elapsedSec <= 0)
+            {
+                Program.Log("DeductOffline: 时钟回拨，不扣除");
+                return false;
+            }
+            
+            // 如果离线时间小于 30 秒，认为是正常关机/重启，不扣除
+            // （避免因系统关机延迟导致误扣）
+            if (elapsedSec < 30)
+            {
+                Program.Log("DeductOffline: 离线时间 " + elapsedSec.ToString("F1") + " 秒 < 30 秒，视为正常关机不扣除");
+                return false;
+            }
             
             long elapsedCeil = (long)Math.Ceiling(elapsedSec);
             remaining -= (int)Math.Min(elapsedCeil, (long)int.MaxValue);
             if (remaining < 0) remaining = 0;
             Store.SetRemaining(remaining);
+            Program.Log("DeductOffline: 离线扣除 " + elapsedCeil + " 秒，剩余 " + remaining + " 秒");
             return remaining == 0;
         }
 
