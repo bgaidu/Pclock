@@ -18,7 +18,6 @@ namespace PCLock
         public const int Warn5MinSec = 300;      // 5 分钟提醒阈值
         public const int Warn1MinSec = 60;       // 1 分钟提醒阈值
         public const int PersistIntervalSec = 15; // 持久化间隔
-        public const int OfflineDeductCeiling = 1; // 离线扣除向上取整（秒）
 
         // === 锁屏答题 ===
         public const int TotalQuestions = 10;    // 每次锁屏题数
@@ -29,6 +28,9 @@ namespace PCLock
         public const int PinMaxLength = 20;
         public const int PinMaxFails = 5;        // 连续失败次数触发冷却
         public const int PinCooldownSec = 30;    // 全局冷却秒数
+        // 25000 次：单次验证约 0.2 秒（UI 线程可接受），同时使 4 位 PIN 的离线枚举成本
+        // 相比裸 SHA256 提高两万余倍。不要随意调大——验证在 UI 线程同步执行。
+        public const int PinHashIterations = 25000;
 
         // === 看门狗/守护线程 ===
         public const int GuardCheckIntervalMs = 3000;   // 守护/看门狗检查间隔

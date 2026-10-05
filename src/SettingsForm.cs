@@ -30,6 +30,11 @@ namespace PCLock
             box.Width = 290;
             box.PasswordChar = '*';
             box.MaxLength = Constants.PinMaxLength;
+            box.KeyPress += delegate(object s, KeyPressEventArgs e)
+            {
+                // 与锁屏界面输入框保持一致：PIN 只允许数字
+                if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar)) e.Handled = true;
+            };
 
             Label err = new Label();
             err.ForeColor = Color.Firebrick;
@@ -108,14 +113,13 @@ namespace PCLock
             gb.Text = "每次可用时长";
             gb.Location = new Point(15, 15);
             gb.Size = new Size(440, 60);
-            string[] names = new string[] { "15", "30", "45", "60", "90", "120" };
             int[] mins = Constants.AllowedDurations;
             RadioButton[] rbs = new RadioButton[mins.Length];
             int cur = Store.GetDurationMinutes();
             for (int i = 0; i < mins.Length; i++)
             {
                 rbs[i] = new RadioButton();
-                rbs[i].Text = names[i] + "分";
+                rbs[i].Text = mins[i] + "分";
                 rbs[i].AutoSize = true;
                 rbs[i].Location = new Point(15 + i * 70, 25);
                 rbs[i].Tag = mins[i];
@@ -287,6 +291,11 @@ namespace PCLock
             b.Width = 120;
             b.PasswordChar = '*';
             b.MaxLength = Constants.PinMaxLength;
+            // 锁屏界面 PIN 输入框只接受数字，这里必须一致，否则含字母的 PIN 在锁屏时无法输入
+            b.KeyPress += delegate(object s, KeyPressEventArgs e)
+            {
+                if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar)) e.Handled = true;
+            };
             return b;
         }
 

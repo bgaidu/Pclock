@@ -34,8 +34,8 @@ namespace PCLock
             {
                 if (GetInt("FirstRunDone", 0) == 0)
                 {
-                    SetStr("PinHash", Hash(PCLockConstants.DefaultPin, "Salt"));          // 家长PIN默认 1234
-                    SetStr("UnPinHash", Hash(PCLockConstants.DefaultUninstallPin, "USalt"));       // 卸载密码默认 1234
+                    SetStr("PinHash", NewHash(PCLockConstants.DefaultPin));               // 家长PIN默认 1234
+                    SetStr("UnPinHash", NewHash(PCLockConstants.DefaultUninstallPin));    // 卸载密码默认 1234
                     SetInt("DurationMinutes", PCLockConstants.DefaultDurationMinutes);
                     SetInt("LockFlag", 0);
                     SetInt("RemainingSeconds", PCLockConstants.DefaultDurationMinutes * 60);
@@ -85,11 +85,11 @@ namespace PCLock
 
         public static int GetDurationMinutes()
         {
-            int d = GetInt("DurationMinutes", 60);
-            int[] ok = new int[] { 15, 30, 45, 60, 90, 120 };
+            int d = GetInt("DurationMinutes", PCLockConstants.DefaultDurationMinutes);
+            int[] ok = PCLockConstants.AllowedDurations;
             for (int i = 0; i < ok.Length; i++)
                 if (ok[i] == d) return d;
-            return 60;
+            return PCLockConstants.DefaultDurationMinutes;
         }
 
         public static void SetDurationMinutes(int m) { SetInt("DurationMinutes", m); }
@@ -107,35 +107,86 @@ namespace PCLock
         public static long GetLastSeenUtc() { return GetLong("LastSeenUtc", 0); }
         public static void SetLastSeenUtc(long ticks) { SetLong("LastSeenUtc", ticks); }
 
-        static string Hash(string pin, string saltName)
+        // === PIN 哈希 ===
+        // HKLM\SOFTWARE\PCLock 普通用户可读，4 位纯数字 PIN 若用快速哈希可被离线枚举，
+        // 因此新格式用 PBKDF2（迭代次数见 Constants.PinHashIterations）：
+        //   新格式："pbkdf2$<迭代次数>$<salt>$<hash>"
+        //   旧格式：64 位十六进制 = SHA256(salt|pin)，验证成功后自动升级为新格式
+        const string HashPrefix = "pbkdf2";
+        const int HashMaxIterations = 10000000; // 解析已存哈希时的迭代次数上限（防篡改成超大值拖死验证）
+
+        static string BytesToHex(byte[] data)
         {
-            string salt = GetStr(saltName, null);
-            if (salt == null)
-            {
-                salt = Guid.NewGuid().ToString("N");
-                SetStr(saltName, salt);
-            }
+            StringBuilder sb = new StringBuilder(data.Length * 2);
+            for (int i = 0; i < data.Length; i++) sb.Append(data[i].ToString("x2"));
+            return sb.ToString();
+        }
+
+        internal static string LegacyHashHex(string pin, string salt)
+        {
             using (SHA256 sha = SHA256.Create())
             {
-                byte[] data = sha.ComputeHash(Encoding.UTF8.GetBytes(salt + "|" + pin));
-                StringBuilder sb = new StringBuilder();
-                for (int i = 0; i < data.Length; i++) sb.Append(data[i].ToString("x2"));
-                return sb.ToString();
+                return BytesToHex(sha.ComputeHash(Encoding.UTF8.GetBytes(salt + "|" + pin)));
             }
+        }
+
+        static string Pbkdf2HashHex(string pin, string salt, int iterations)
+        {
+            using (Rfc2898DeriveBytes kdf = new Rfc2898DeriveBytes(pin, Encoding.UTF8.GetBytes(salt), iterations))
+            {
+                return BytesToHex(kdf.GetBytes(32));
+            }
+        }
+
+        internal static string NewHash(string pin)
+        {
+            string salt = Guid.NewGuid().ToString("N");
+            return HashPrefix + "$" + PCLockConstants.PinHashIterations + "$" + salt + "$" +
+                Pbkdf2HashHex(pin, salt, PCLockConstants.PinHashIterations);
+        }
+
+        /// <summary>纯函数：pin 是否匹配已存的哈希（兼容新旧两种格式）</summary>
+        internal static bool MatchesStoredHash(string stored, string pin, string legacySalt)
+        {
+            if (string.IsNullOrEmpty(stored) || string.IsNullOrEmpty(pin)) return false;
+            if (stored.StartsWith(HashPrefix + "$", StringComparison.Ordinal))
+            {
+                string[] parts = stored.Split('$');
+                if (parts.Length != 4) return false;
+                int iters;
+                if (!int.TryParse(parts[1], out iters) || iters < 1 || iters > HashMaxIterations) return false;
+                if (parts[2].Length == 0 || parts[3].Length == 0) return false;
+                return parts[3] == Pbkdf2HashHex(pin, parts[2], iters);
+            }
+            // 旧格式
+            if (string.IsNullOrEmpty(legacySalt)) return false;
+            return LegacyHashHex(pin, legacySalt) == stored;
+        }
+
+        static bool VerifyHash(string hashName, string legacySaltName, string pin)
+        {
+            if (string.IsNullOrEmpty(pin)) return false;
+            string stored = GetStr(hashName, "");
+            if (!MatchesStoredHash(stored, pin, GetStr(legacySaltName, null))) return false;
+            if (!stored.StartsWith(HashPrefix + "$", StringComparison.Ordinal))
+            {
+                try { SetStr(hashName, NewHash(pin)); } catch (Exception) { } // 旧格式自动升级
+            }
+            return true;
         }
 
         public static bool VerifyPin(string pin)
         {
-            return pin != null && pin.Length > 0 && GetStr("PinHash", "") == Hash(pin, "Salt");
+            return VerifyHash("PinHash", "Salt", pin);
         }
 
         public static bool VerifyUninstallPin(string pin)
         {
-            return pin != null && pin.Length > 0 && GetStr("UnPinHash", "") == Hash(pin, "USalt");
+            return VerifyHash("UnPinHash", "USalt", pin);
         }
 
-        public static void SetPin(string p) { SetStr("PinHash", Hash(p, "Salt")); }
-        public static void SetUninstallPin(string p) { SetStr("UnPinHash", Hash(p, "USalt")); }
+        public static void SetPin(string p) { SetStr("PinHash", NewHash(p)); }
+        public static void SetUninstallPin(string p) { SetStr("UnPinHash", NewHash(p)); }
 
         /// <summary>卸载时清除全部痕迹</summary>
         public static void RemoveAll()

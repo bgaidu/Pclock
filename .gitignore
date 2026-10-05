@@ -20,3 +20,6 @@ desktop.ini
 .idea/
 *.user
 *.suo
+
+# 机器相关的本地调试解决方案（指向本机 exe 路径）
+PCLock.sln

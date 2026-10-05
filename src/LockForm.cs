@@ -33,7 +33,7 @@ namespace PCLock
         int wrongLeft;      // 答错后的冷却秒数
         int pinFails;
         int pinCooldown;
-        Random rnd = new Random();
+        int lastCooldownTick;   // Environment.TickCount：冷却按真实秒数递减（uiTimer 每 500ms 触发）
         LowLevelHook hook;
         Timer uiTimer;
 
@@ -225,6 +225,7 @@ namespace PCLock
                 qIndex = 0;
                 ShowCurrentQuestion();
                 wrongLeft = Constants.WrongCooldownSec;
+                lastCooldownTick = Environment.TickCount;
                 answerBox.Enabled = false;
                 submitBtn.Enabled = false;
                 statusLabel.Text = "回答错误，全部清零重新开始，请 " + Constants.WrongCooldownSec + " 秒后再试";
@@ -249,6 +250,7 @@ namespace PCLock
                 {
                     pinFails = 0;
                     pinCooldown = Constants.PinCooldownSec;
+                    lastCooldownTick = Environment.TickCount;
                     pinBox.Enabled = false;
                     pinOkBtn.Enabled = false;
                 }
@@ -267,32 +269,41 @@ namespace PCLock
             if (!TopMost) TopMost = true;
             if (!ContainsFocus) Activate();
 
-            if (wrongLeft > 0)
+            // 冷却按真实时间递减：uiTimer 每 500ms 触发一次，不能每个 tick 直接减秒
+            if (wrongLeft > 0 || pinCooldown > 0)
             {
-                wrongLeft--;
-                if (wrongLeft == 0)
+                int now = Environment.TickCount;
+                if (now - lastCooldownTick >= 1000)
                 {
-                    answerBox.Enabled = true;
-                    submitBtn.Enabled = true;
-                    UpdateStatus();
-                }
-                else
-                {
-                    statusLabel.Text = "回答错误，请 " + wrongLeft + " 秒后再试";
-                }
-            }
-            if (pinCooldown > 0)
-            {
-                pinCooldown--;
-                if (pinCooldown == 0)
-                {
-                    pinBox.Enabled = true;
-                    pinOkBtn.Enabled = true;
-                    pinLabel.Text = "家长 PIN：";
-                }
-                else
-                {
-                    pinLabel.Text = "PIN 错误次数过多，请 " + pinCooldown + " 秒后再试";
+                    lastCooldownTick = now;
+                    if (wrongLeft > 0)
+                    {
+                        wrongLeft--;
+                        if (wrongLeft == 0)
+                        {
+                            answerBox.Enabled = true;
+                            submitBtn.Enabled = true;
+                            UpdateStatus();
+                        }
+                        else
+                        {
+                            statusLabel.Text = "回答错误，请 " + wrongLeft + " 秒后再试";
+                        }
+                    }
+                    if (pinCooldown > 0)
+                    {
+                        pinCooldown--;
+                        if (pinCooldown == 0)
+                        {
+                            pinBox.Enabled = true;
+                            pinOkBtn.Enabled = true;
+                            pinLabel.Text = "家长 PIN：";
+                        }
+                        else
+                        {
+                            pinLabel.Text = "PIN 错误次数过多，请 " + pinCooldown + " 秒后再试";
+                        }
+                    }
                 }
             }
         }

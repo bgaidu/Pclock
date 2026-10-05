@@ -28,16 +28,14 @@ namespace PCLock
         {
             Instance = this;
 
-            // 创建停止事件（供看门狗监听），必须在 Store.Init 之前创建，确保看门狗能打开
+            // 创建停止事件（供看门狗监听）。同名事件已存在时构造函数会直接打开它，不会抛异常
             try
             {
                 stopEvent = new EventWaitHandle(false, EventResetMode.ManualReset, Constants.StopEventName);
             }
             catch (Exception)
             {
-                // 已存在则打开现有的
-                try { stopEvent = EventWaitHandle.OpenExisting(Constants.StopEventName); }
-                catch { stopEvent = null; }
+                stopEvent = null;
             }
 
             Store.Init();
@@ -64,6 +62,11 @@ namespace PCLock
             timer.Interval = 1000;
             timer.Tick += OnTick;
             timer.Start();
+
+            // 正常注销/关机（开始菜单关机、重启、注销）时清掉时间戳并保存剩余时间，
+            // 下次开机不按离线时长扣减；硬断电收不到该事件，仍会在下次开机扣离线时长。
+            // 若关机被其他程序取消，OnTick 会在 15 秒内重新写回时间戳。
+            SystemEvents.SessionEnding += OnSessionEnding;
 
             // 看门狗守护线程：看门狗进程被杀则重新拉起
             guardThread = new Thread(GuardLoop);
@@ -118,9 +121,20 @@ namespace PCLock
             return remaining == 0;
         }
 
+        void OnSessionEnding(object sender, SessionEndingEventArgs e)
+        {
+            if (stopping) return;
+            try
+            {
+                Store.SetRemaining(remaining);
+                Store.SetLastSeenUtc(0);
+            }
+            catch (Exception) { }
+        }
+
         void OnTick(object sender, EventArgs e)
         {
-            if (lockForm != null) return;   // 锁屏期间不计时
+            if (stopping || lockForm != null) return;   // 锁屏/退出中不计时（避免退出过程中再次触发 LockNow）
             remaining--;
             // 用范围判断而非精确相等，避免 Timer 精度漂移跳过提醒
             if (!warned5 && remaining <= Constants.Warn5MinSec) { Warn("电脑还剩 5 分钟使用时间"); warned5 = true; }
@@ -235,9 +249,10 @@ namespace PCLock
             // 方法1：创建计划任务（登录时运行，最高权限）
             try
             {
-                // schtasks 的 /TR 参数：路径含空格时必须用引号包裹
+                // schtasks 的 /TR 参数：值含空格时 schtasks 会在第一个空格处拆分命令，
+                // 因此路径本身还要包一层内层引号：/TR "\"C:\path with space\PCLock.exe\""
                 // /DELAY 0000:30 表示登录后延迟 30 秒触发（Win7+ 均支持）
-                string arguments = "/Create /F /SC ONLOGON /RL HIGHEST /DELAY 0000:30 /TN \"" + Constants.TaskName + "\" /TR \"" + exe + "\"";
+                string arguments = "/Create /F /SC ONLOGON /RL HIGHEST /DELAY 0000:30 /TN \"" + Constants.TaskName + "\" /TR \"\\\"" + exe + "\\\"\"";
                 
                 ProcessStartInfo psi = new ProcessStartInfo("schtasks", arguments);
                 psi.CreateNoWindow = true;
@@ -319,6 +334,7 @@ namespace PCLock
         public void Shutdown(bool uninstall)
         {
             stopping = true;
+            if (timer != null) timer.Stop();
             try
             {
                 if (lockForm != null)
