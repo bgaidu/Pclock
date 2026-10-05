@@ -132,10 +132,10 @@ namespace PCLock
 
         static string Pbkdf2HashHex(string pin, string salt, int iterations)
         {
-            using (Rfc2898DeriveBytes kdf = new Rfc2898DeriveBytes(pin, Encoding.UTF8.GetBytes(salt), iterations))
-            {
-                return BytesToHex(kdf.GetBytes(32));
-            }
+            // .NET 3.5 的 DeriveBytes 未实现 IDisposable，不能用 using（v3.5 csc 报 CS1674）；
+            // 无非托管资源，交给 GC 回收即可，v3.5/v4 编译器均兼容
+            Rfc2898DeriveBytes kdf = new Rfc2898DeriveBytes(pin, Encoding.UTF8.GetBytes(salt), iterations);
+            return BytesToHex(kdf.GetBytes(32));
         }
 
         internal static string NewHash(string pin)
