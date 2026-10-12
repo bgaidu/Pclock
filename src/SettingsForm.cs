@@ -100,7 +100,7 @@ namespace PCLock
     {
         public SettingsForm()
         {
-            Text = "电脑锁 - 家长设置";
+            Text = "电脑锁 v" + AppVersion.Version + " - 家长设置";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -109,6 +109,15 @@ namespace PCLock
             AutoScroll = true;
             ClientSize = new Size(540, 600);
             this.Icon = Program.LoadAppIcon();
+
+            // 顶部菜单：关于
+            MenuStrip menu = new MenuStrip();
+            ToolStripMenuItem miAbout = new ToolStripMenuItem("关于");
+            miAbout.Click += delegate { using (AboutForm af = new AboutForm()) af.ShowDialog(this); };
+            menu.Items.Add(miAbout);
+            menu.Dock = DockStyle.Top;
+            this.MainMenuStrip = menu;
+            Controls.Add(menu);
 
             // ---- 配置对象（按 Windows 用户分别限制）----
             GroupBox guUser = new GroupBox();
@@ -442,13 +451,20 @@ namespace PCLock
             Controls.Add(btnExit);
             Controls.Add(btnRemove);
 
-            Label tip = new Label();
-            tip.Text = "说明：锁屏后需全部答对 " + Constants.TotalQuestions +
-                " 道题（数学填答案，语文/英语四选一，答错清零重来），或由家长输入 PIN 解锁。";
-            tip.ForeColor = Color.Gray;
-            tip.AutoSize = true;
-            tip.Location = new Point(15, 750);
-            Controls.Add(tip);
+            // 将菜单以外的内容整体放入可滚动面板，避免与顶部菜单重叠
+            Panel content = new Panel();
+            content.Dock = DockStyle.Fill;
+            content.AutoScroll = true;
+            for (int i = Controls.Count - 1; i >= 0; i--)
+            {
+                Control c = Controls[i];
+                if (c is MenuStrip) continue;
+                Controls.RemoveAt(i);
+                content.Controls.Add(c);
+            }
+            Controls.Add(content);
+            this.AutoScroll = false;
+            menu.BringToFront();
         }
 
         static TextBox NewBox(int x, int y)
@@ -473,6 +489,61 @@ namespace PCLock
             l.AutoSize = true;
             l.Location = new Point(x, y);
             return l;
+        }
+    }
+
+    /// <summary>关于窗口：程序名+版本号、免费声明、作者，以及原设置页的功能说明。</summary>
+    public class AboutForm : Form
+    {
+        public AboutForm()
+        {
+            Text = "关于";
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            StartPosition = FormStartPosition.CenterParent;
+            ShowInTaskbar = false;
+            ClientSize = new Size(440, 270);
+            this.Icon = Program.LoadAppIcon();
+
+            Label name = new Label();
+            name.Text = "电脑锁 v" + AppVersion.Version + " (" + AppVersion.Commit + ")";
+            name.Font = new Font("Microsoft YaHei", 14, FontStyle.Bold);
+            name.AutoSize = true;
+            name.Location = new Point(20, 20);
+
+            Label free = new Label();
+            free.Text = "本程序免费。";
+            free.Font = new Font("Microsoft YaHei", 11);
+            free.AutoSize = true;
+            free.Location = new Point(20, 66);
+
+            Label author = new Label();
+            author.Text = "作者：bgaidu、AI";
+            author.Font = new Font("Microsoft YaHei", 11);
+            author.AutoSize = true;
+            author.Location = new Point(20, 96);
+
+            Label desc = new Label();
+            desc.Text = "功能说明：锁屏后需全部答对 " + Constants.TotalQuestions +
+                " 道题（数学填答案，语文/英语四选一，答错清零重来），或由家长输入 PIN 解锁。";
+            desc.AutoSize = false;
+            desc.Size = new Size(400, 70);
+            desc.Location = new Point(20, 130);
+
+            Button ok = new Button();
+            ok.Text = "确定";
+            ok.DialogResult = DialogResult.OK;
+            ok.Location = new Point(180, 215);
+            ok.Size = new Size(80, 30);
+            ok.Click += delegate { Close(); };
+
+            Controls.Add(name);
+            Controls.Add(free);
+            Controls.Add(author);
+            Controls.Add(desc);
+            Controls.Add(ok);
+            AcceptButton = ok;
         }
     }
 }

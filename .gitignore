@@ -16,3 +16,6 @@ PCLock.exe
 
 # build.bat 输出目录（bin\Debug、bin\Release 为构建产物，不纳入版本控制）
 bin/
+
+# build.bat 自动生成的版本信息（随 git commit 变化，不入库）
+_Version.cs
