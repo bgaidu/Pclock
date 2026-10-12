@@ -106,7 +106,9 @@ namespace PCLock
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ShowInTaskbar = false;
-            ClientSize = new Size(470, 700);
+            AutoScroll = true;
+            ClientSize = new Size(540, 600);
+            this.Icon = Program.LoadAppIcon();
 
             // ---- 配置对象（按 Windows 用户分别限制）----
             GroupBox guUser = new GroupBox();
@@ -317,28 +319,10 @@ namespace PCLock
             gu.Controls.Add(btnUn);
             Controls.Add(gu);
 
-            // ---- 系统屏保（空闲自动锁屏）----
-            GroupBox guSS = new GroupBox();
-            guSS.Text = "系统屏保（空闲自动锁屏）";
-            guSS.Location = new Point(15, 600);
-            guSS.Size = new Size(440, 52);
-            Button btnSS = new Button();
-            btnSS.Location = new Point(300, 18);
-            btnSS.Size = new Size(125, 28);
-            btnSS.Text = ScreenSaver.IsRegistered() ? "取消系统屏保" : "设为系统屏保";
-            btnSS.Click += delegate
-            {
-                bool ok = ScreenSaver.IsRegistered() ? ScreenSaver.Unregister() : ScreenSaver.Register();
-                if (!ok) MessageBox.Show(this, "操作失败，请检查目录写权限或已有其他屏保占用。", "电脑锁");
-                else btnSS.Text = ScreenSaver.IsRegistered() ? "取消系统屏保" : "设为系统屏保";
-            };
-            guSS.Controls.Add(btnSS);
-            Controls.Add(guSS);
-
             // ---- 临时加时 / 暂停 + 今日已用（按用户）----
-            Label lblUsed = NewLbl("今日已用：计算中…", 15, 18);
+            Label lblUsed = NewLbl("今日已用：计算中…", 15, 560);
             lblUsed.ForeColor = Color.Gray;
-            guSS.Controls.Add(lblUsed);
+            Controls.Add(lblUsed);
             Button btnPause = new Button();
             btnPause.Text = "暂停计时";
             btnPause.Location = new Point(185, 612);

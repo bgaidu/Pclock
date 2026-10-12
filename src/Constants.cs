@@ -10,8 +10,6 @@ namespace PCLock
         public const string MutexName = "Local\\PCLock_Main";
         public const string WatchMutexName = "Local\\PCLock_Watchdog";
         public const string StopEventName = "Local\\PCLock_Stop";
-        // 屏保空闲触发时，屏保进程（PCLock.scr /s）用来通知主程序去锁屏的事件名
-        public const string ScreenSaverLockRequestName = "Local\\PCLock_SSLock";
         public const string TaskName = "PCLock";
 
         // === 时间相关（秒）===

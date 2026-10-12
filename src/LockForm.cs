@@ -195,7 +195,7 @@ namespace PCLock
         void LayoutControls()
         {
             int cx = ClientSize.Width / 2;
-            int y = ClientSize.Height * 32 / 100;
+            int y = ClientSize.Height * 18 / 100;
             titleLabel.Left = cx - titleLabel.Width / 2;
             titleLabel.Top = y;
             questionLabel.Left = cx - questionLabel.Width / 2;
@@ -472,11 +472,9 @@ namespace PCLock
             if (uiTimer != null) { uiTimer.Stop(); uiTimer.Dispose(); uiTimer = null; }
         }
 
-        // === 屏保协议级处理 ===
-        // 让锁屏界面在 Windows 看来就是"屏保"：系统屏保超时向其发送 SC_SCREENSAVE 时，
-        // 我们吸收该命令（避免系统再叠加一层屏保），并阻止通过系统命令关闭/最小化/任务栏。
+        // === 锁屏期间屏蔽系统命令 ===
+        // 阻止通过系统命令关闭/最小化/弹出任务栏，锁屏期间无法用系统命令绕过或关闭。
         const int WM_SYSCOMMAND = 0x0112;
-        const int SC_SCREENSAVE = 0xF140;
         const int SC_CLOSE = 0xF060;
         const int SC_MINIMIZE = 0xF020;
         const int SC_MAXIMIZE = 0xF030;
@@ -489,12 +487,6 @@ namespace PCLock
             if (m.Msg == WM_SYSCOMMAND)
             {
                 int w = (int)m.WParam;
-                if (w == SC_SCREENSAVE)
-                {
-                    // 本身即屏保级锁屏：吸收系统屏保命令，防止叠加系统屏保
-                    m.Result = IntPtr.Zero;
-                    return;
-                }
                 int cmd = w & 0xFFF0;
                 if (cmd == SC_CLOSE || cmd == SC_MINIMIZE || cmd == SC_MAXIMIZE ||
                     cmd == SC_RESTORE || cmd == SC_TASKLIST || cmd == SC_KEYMENU)

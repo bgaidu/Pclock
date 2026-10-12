@@ -36,9 +36,9 @@ rem 输出目录（bin\Debug 或 bin\Release）
 set OUTDIR=%~dp0bin\%CONFIG%\
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
 
-"%CSC%" /nologo /target:winexe /out:"%OUTDIR%PCLock.exe" /win32manifest:app.manifest %OPTS% /codepage:65001 ^
+"%CSC%" /nologo /target:winexe /out:"%OUTDIR%PCLock.exe" /win32manifest:app.manifest /win32icon:AppIcon.ico %OPTS% /codepage:65001 ^
   /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Security.dll ^
-  src\Program.cs src\App.cs src\Store.cs src\Protection.cs src\Watchdog.cs src\Questions.cs src\ChineseData.cs src\EnglishData.cs src\LockForm.cs src\SettingsForm.cs src\MaskForm.cs src\ScreenSaver.cs src\Constants.cs
+  src\Program.cs src\App.cs src\Store.cs src\Protection.cs src\Watchdog.cs src\Questions.cs src\ChineseData.cs src\EnglishData.cs src\LockForm.cs src\SettingsForm.cs src\MaskForm.cs src\Constants.cs
 
 if errorlevel 1 (
   echo [错误] 编译失败。
@@ -50,6 +50,7 @@ rem 复制运行时所需文件到输出目录（与 PCLock.exe 放在一起）
 if exist "PCLock.exe.config" copy /Y "PCLock.exe.config" "%OUTDIR%PCLock.exe.config" >nul
 if exist "chinese.txt"       copy /Y "chinese.txt"       "%OUTDIR%chinese.txt"       >nul
 if exist "english.txt"       copy /Y "english.txt"       "%OUTDIR%english.txt"       >nul
+if exist "AppIcon.ico"       copy /Y "AppIcon.ico"       "%OUTDIR%AppIcon.ico"       >nul
 
 echo.
 echo 编译成功 [配置: %CONFIG%]: %OUTDIR%PCLock.exe
