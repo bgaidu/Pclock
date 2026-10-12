@@ -136,68 +136,231 @@ namespace PCLock
         // ===== 数学：按年级难度算法生成（结果恒为整数）=====
         public static Question MakeMath(int grade)
         {
-            int a, b, ans = 0;
-            string text = "";
-            int kind = rnd.Next(grade >= 3 ? 4 : 3);
-
-            if (grade <= 1)
+            string text; int ans;
+            switch (grade)
             {
-                if (kind == 0) { a = rnd.Next(1, 20); b = rnd.Next(1, 20); ans = a + b; text = a + " + " + b + " = ?"; }
-                else { a = rnd.Next(2, 20); b = rnd.Next(1, a); ans = a - b; text = a + " - " + b + " = ?"; }
+                case 1: Gen1(out text, out ans); break;
+                case 2: Gen2(out text, out ans); break;
+                case 3: Gen3(out text, out ans); break;
+                case 4: Gen4(out text, out ans); break;
+                case 5: Gen5(out text, out ans); break;
+                default: Gen6(out text, out ans); break;
             }
-            else if (grade == 2)
-            {
-                if (kind == 0) { a = rnd.Next(10, 100); b = rnd.Next(10, 100); ans = a + b; text = a + " + " + b + " = ?"; }
-                else if (kind == 1) { a = rnd.Next(20, 100); b = rnd.Next(1, a); ans = a - b; text = a + " - " + b + " = ?"; }
-                else { a = rnd.Next(2, 10); b = rnd.Next(2, 10); ans = a * b; text = a + " × " + b + " = ?"; }
-            }
-            else if (grade == 3)
-            {
-                if (kind == 0) { a = rnd.Next(300, 1000); b = rnd.Next(10, a); ans = a - b; text = a + " - " + b + " = ?"; }
-                else if (kind == 1) { a = rnd.Next(56, 500); b = rnd.Next(56, 500); ans = a + b; text = a + " + " + b + " = ?"; }
-                else if (kind == 2) { a = rnd.Next(13, 40); b = rnd.Next(3, 10); ans = a * b; text = a + " × " + b + " = ?"; }
-                else { b = rnd.Next(3, 10); ans = rnd.Next(12, 41); a = b * ans; text = a + " ÷ " + b + " = ?"; }
-            }
-            else if (grade == 4)
-            {
-                if (kind == 0) { a = rnd.Next(100, 999); b = rnd.Next(10, 99); ans = a * b; text = a + " × " + b + " = ?"; }
-                else if (kind == 1) { b = rnd.Next(2, 10); ans = rnd.Next(10, 100); a = b * ans; text = a + " ÷ " + b + " = ?"; }
-                else if (kind == 2) { b = rnd.Next(11, 99); ans = rnd.Next(2, 10); a = b * ans; text = a + " ÷ " + b + " = ?"; }
-                else { a = rnd.Next(500, 9999); b = rnd.Next(100, 999); ans = a + b; text = a + " + " + b + " = ?"; }
-            }
-            else if (grade == 5)
-            {
-                if (kind == 0) { int t = 5 * rnd.Next(1, 9); int n = rnd.Next(1, 10) * 2; ans = (t * n) / 10; text = DecText(t) + " × " + n + " = ?"; }
-                else if (kind == 1) { a = rnd.Next(100, 999); b = rnd.Next(10, 99); ans = a * b; text = a + " × " + b + " = ?"; }
-                else if (kind == 2) { b = rnd.Next(11, 99); ans = rnd.Next(2, 20); a = b * ans; text = a + " ÷ " + b + " = ?"; }
-                else { a = rnd.Next(1000, 9999); b = rnd.Next(100, 999); ans = a + b; text = a + " + " + b + " = ?"; }
-            }
-            else // grade 6
-            {
-                if (kind == 0) // 百分数（结果为整数）
-                {
-                    int X = (rnd.Next(2) == 0) ? 50 : 25;
-                    int Y = (X == 50) ? rnd.Next(2, 50) * 2 : rnd.Next(1, 25) * 4;
-                    ans = Y * X / 100; text = X + "% × " + Y + " = ?";
-                }
-                else if (kind == 1) { int t = 5 * rnd.Next(1, 9); int n = rnd.Next(1, 10) * 2; ans = (t * n) / 10; text = DecText(t) + " × " + n + " = ?"; }
-                else if (kind == 2) { a = rnd.Next(100, 999); b = rnd.Next(100, 999); ans = a * b; text = a + " × " + b + " = ?"; }
-                else if (kind == 3) { a = rnd.Next(11, 32); ans = a * a; text = a + "² = ?"; }
-                else { b = rnd.Next(100, 999); ans = rnd.Next(2, 20); a = b * ans; text = a + " ÷ " + b + " = ?"; }
-            }
-
+            if (ans < 0) ans = 0;
             Question q = new Question();
             q.Subject = Subject.Math; q.Grade = grade; q.Type = QType.MathCalc;
             q.Prompt = text; q.Options = null; q.CorrectIndex = -1; q.Answer = ans; q.Explanation = "";
             return q;
         }
 
-        // t 为"十分位整数"（如 15 表示 1.5），仅生成 .5 / 整数
-        static string DecText(int t)
+        // 一年级：10以内加减、20以内进位加/退位减、连加连减、加减混合
+        static void Gen1(out string text, out int ans)
         {
-            int ip = t / 10; int fr = t % 10;
-            if (fr == 0) return ip.ToString();
-            return ip.ToString() + ".5";
+            int k = rnd.Next(7), a, b, c, room, add;
+            switch (k)
+            {
+                case 0: a = rnd.Next(1, 10); b = rnd.Next(1, 11 - a); ans = a + b; text = a + " + " + b + " = ?"; break;
+                case 1: a = rnd.Next(2, 11); b = rnd.Next(1, a); ans = a - b; text = a + " - " + b + " = ?"; break;
+                case 2:
+                    a = rnd.Next(8, 10); b = rnd.Next(11 - a, 19 - a);
+                    if (b > 9) b = 9; if (b < 2) b = 2;
+                    ans = a + b; text = a + " + " + b + " = ?"; break;
+                case 3:
+                    a = rnd.Next(11, 19); b = rnd.Next((a % 10) + 1, 10);
+                    if (b < 2) b = 2; if (b >= a) b = a - 2; if (b < 2) b = 2;
+                    ans = a - b; text = a + " - " + b + " = ?"; break;
+                case 4:
+                    a = rnd.Next(1, 10); b = rnd.Next(1, 10); c = rnd.Next(1, 10);
+                    if (a + b + c > 20) { c = 1; if (a + b + c > 20) { b = 1; if (a + b + c > 20) a = 1; } }
+                    ans = a + b + c; text = a + " + " + b + " + " + c + " = ?"; break;
+                case 5:
+                    a = rnd.Next(10, 20); b = rnd.Next(1, a); c = rnd.Next(1, a - b + 1);
+                    ans = a - b - c; text = a + " - " + b + " - " + c + " = ?"; break;
+                default:
+                    a = rnd.Next(6, 15); b = rnd.Next(1, a); room = 20 - (a - b); if (room < 1) room = 1;
+                    add = rnd.Next(1, (room < 9 ? room : 9) + 1);
+                    ans = a - b + add; if (ans > 20) { add = 20 - (a - b); if (add < 1) add = 1; ans = a - b + add; }
+                    text = a + " - " + b + " + " + add + " = ?"; break;
+            }
+        }
+
+        // 二年级：100以内进位加/退位减、表内乘除、连减
+        static void Gen2(out string text, out int ans)
+        {
+            int k = rnd.Next(5), a, b, c, g;
+            switch (k)
+            {
+                case 0:
+                    a = rnd.Next(10, 90); b = rnd.Next(10, 90);
+                    if (a + b > 100) { b = 100 - a; if (b < 10) { a = 40; b = 50; } }
+                    ans = a + b; text = a + " + " + b + " = ?"; break;
+                case 1:
+                    a = rnd.Next(21, 100); g = 0;
+                    do { b = rnd.Next(11, a); g++; } while (((a % 10) >= (b % 10) || b >= a) && g < 60);
+                    if (b >= a || (a % 10) >= (b % 10)) { a = 52; b = 27; }
+                    ans = a - b; text = a + " - " + b + " = ?"; break;
+                case 2: a = rnd.Next(2, 10); b = rnd.Next(2, 10); ans = a * b; text = a + " × " + b + " = ?"; break;
+                case 3: b = rnd.Next(2, 10); ans = rnd.Next(2, 10); a = b * ans; text = a + " ÷ " + b + " = ?"; break;
+                default:
+                    a = rnd.Next(60, 100); b = rnd.Next(10, 40); c = rnd.Next(1, 20);
+                    if (b + c >= a) c = 1; if (b + c >= a) b = 10;
+                    ans = a - b - c; text = a + " - " + b + " - " + c + " = ?"; break;
+            }
+        }
+
+        // 三年级：两三位数乘/除一位数、四则混合(小括号)、同分母分数加减、一位小数加减
+        static void Gen3(out string text, out int ans)
+        {
+            int k = rnd.Next(5), a, b, c, d, p, q, r, tot, ia, ib, f, g2, lo, hi;
+            switch (k)
+            {
+                case 0: a = rnd.Next(10, 1000); b = rnd.Next(2, 10); ans = a * b; text = a + " × " + b + " = ?"; break;
+                case 1:
+                    {
+                        b = rnd.Next(2, 10); lo = (100 + b - 1) / b; if (lo < 20) lo = 20; hi = 1000 / b;
+                        int[] zc = new int[] { 102, 105, 108, 120, 150, 204, 306, 408, 500, 600, 700, 800, 900 };
+                        ans = (rnd.Next(3) == 0) ? zc[rnd.Next(zc.Length)] : rnd.Next(lo, hi);
+                        if (ans < lo || ans > hi) ans = rnd.Next(lo, hi);
+                        a = b * ans; text = a + " ÷ " + b + " = ?";
+                    }
+                    break;
+                case 2:
+                    switch (rnd.Next(5))
+                    {
+                        case 0: a = rnd.Next(10, 60); b = rnd.Next(2, 10); c = rnd.Next(2, 10); ans = a + b * c; text = a + " + " + b + " × " + c + " = ?"; break;
+                        case 1: a = rnd.Next(11, 40); b = rnd.Next(2, 10); c = rnd.Next(1, a * b); ans = a * b - c; text = a + " × " + b + " - " + c + " = ?"; break;
+                        case 2: a = rnd.Next(5, 20); b = rnd.Next(5, 20); c = rnd.Next(2, 10); ans = (a + b) * c; text = "(" + a + " + " + b + ") × " + c + " = ?"; break;
+                        case 3: c = rnd.Next(2, 10); d = c * rnd.Next(2, 10); b = rnd.Next(10, 50); a = b + d; ans = d / c; text = "(" + a + " - " + b + ") ÷ " + c + " = ?"; break;
+                        default: a = rnd.Next(2, 10); b = rnd.Next(5, 20); c = rnd.Next(1, b); ans = a * (b - c); text = a + " × (" + b + " - " + c + ") = ?"; break;
+                    }
+                    break;
+                case 3:
+                    q = rnd.Next(2, 10); r = rnd.Next(1, 3); tot = q * r; p = rnd.Next(1, tot); c = tot - p;
+                    ans = r; text = p + "/" + q + " + " + c + "/" + q + " = ?"; break;
+                default:
+                    if (rnd.Next(2) == 0)
+                    { ia = rnd.Next(1, 10); ib = rnd.Next(1, 10); f = rnd.Next(1, 10); g2 = 10 - f; ans = ia + ib + 1; text = ia + "." + f + " + " + ib + "." + g2 + " = ?"; }
+                    else { ia = rnd.Next(3, 10); ib = rnd.Next(1, ia); f = rnd.Next(1, 10); ans = ia - ib; text = ia + "." + f + " - " + ib + "." + f + " = ?"; }
+                    break;
+            }
+        }
+
+        // 四年级：三位数×两位数、除数是两位数、四则(中括号)、运算律简便
+        static void Gen4(out string text, out int ans)
+        {
+            int k = rnd.Next(4), a, b, c, d, n, m;
+            switch (k)
+            {
+                case 0: a = rnd.Next(100, 1000); b = rnd.Next(10, 100); ans = a * b; text = a + " × " + b + " = ?"; break;
+                case 1: b = rnd.Next(11, 100); ans = rnd.Next(11, 100); a = b * ans; text = a + " ÷ " + b + " = ?"; break;
+                case 2:
+                    switch (rnd.Next(4))
+                    {
+                        case 0: a = rnd.Next(10, 50); b = rnd.Next(2, 10); c = rnd.Next(5, 15); d = rnd.Next(1, c); ans = a + b * (c - d); text = a + " + " + b + " × (" + c + " - " + d + ") = ?"; break;
+                        case 1: a = rnd.Next(2, 10); b = rnd.Next(10, 40); c = rnd.Next(2, 10); d = rnd.Next(2, 10); ans = a * (b + c * d); text = a + " × [" + b + " + " + c + " × " + d + "] = ?"; break;
+                        case 2: a = rnd.Next(10, 40); b = rnd.Next(10, 40); c = rnd.Next(10, 30); d = rnd.Next(1, c); ans = (a + b) * (c - d); text = "(" + a + " + " + b + ") × (" + c + " - " + d + ") = ?"; break;
+                        default: a = rnd.Next(11, 30); b = rnd.Next(11, 30); c = rnd.Next(2, 10); d = rnd.Next(2, 10); ans = a * b - c * d; text = a + " × " + b + " - " + c + " × " + d + " = ?"; break;
+                    }
+                    break;
+                default:
+                    switch (rnd.Next(5))
+                    {
+                        case 0: n = rnd.Next(2, 10); ans = n * 100; text = "25 × " + n + " × 4 = ?"; break;
+                        case 1: n = rnd.Next(2, 10); ans = n * 1000; text = "125 × " + n + " × 8 = ?"; break;
+                        case 2: n = rnd.Next(1, 20); m = rnd.Next(2, 6); ans = (100 + n) * m; text = "(100 + " + n + ") × " + m + " = ?"; break;
+                        case 3: n = rnd.Next(2, 10); ans = n * 100; text = "99 × " + n + " + " + n + " = ?"; break;
+                        default: n = rnd.Next(2, 10); ans = n * 100; text = "101 × " + n + " - " + n + " = ?"; break;
+                    }
+                    break;
+            }
+        }
+
+        // 五年级：小数乘除、分数乘除、异分母分数加减、最大公因数/最小公倍数
+        static void Gen5(out string text, out int ans)
+        {
+            int k = rnd.Next(6), b, c, p, q, r, n, ip, f, mm, kk, cc, d1, q1, k2, b1, t, dd, aa, ccc, x, y, gg;
+            switch (k)
+            {
+                case 0:
+                    f = new int[] { 2, 4, 5, 6, 8 }[rnd.Next(5)]; ip = rnd.Next(1, 10); kk = ip * 10 + f;
+                    cc = (f == 5) ? (2 * rnd.Next(1, 5)) : 5;
+                    ans = kk * cc / 10; text = DecStr(kk) + " × " + cc + " = ?"; break;
+                case 1:
+                    d1 = new int[] { 12, 14, 15, 24, 25, 35, 45, 16, 18 }[rnd.Next(9)]; q1 = rnd.Next(2, 5); k2 = d1 * q1;
+                    if (k2 > 99) { q1 = 2; k2 = d1 * 2; }
+                    ans = q1; text = DecStr(k2) + " ÷ " + DecStr(d1) + " = ?"; break;
+                case 2:
+                    if (rnd.Next(2) == 0) { q = rnd.Next(2, 10); mm = rnd.Next(2, 10); n = q * mm; p = rnd.Next(1, 10); ans = mm * p; text = n + " × " + p + "/" + q + " = ?"; }
+                    else { p = rnd.Next(2, 10); q = rnd.Next(2, 10); r = rnd.Next(1, 5); c = r * q; b = p; ans = r; text = p + "/" + q + " × " + c + "/" + b + " = ?"; }
+                    break;
+                case 3:
+                    if (rnd.Next(2) == 0) { p = rnd.Next(1, 4); q = rnd.Next(2, 10); n = rnd.Next(2, 12); if (p != 1 && (n * q) % p != 0) n = p; ans = n * q / p; text = n + " ÷ " + p + "/" + q + " = ?"; }
+                    else { p = rnd.Next(2, 10); q = rnd.Next(2, 10); r = rnd.Next(1, 5); c = p; b = r * q; ans = r; text = p + "/" + q + " ÷ " + c + "/" + b + " = ?"; }
+                    break;
+                case 4:
+                    b1 = rnd.Next(2, 7); t = rnd.Next(2, 4); dd = b1 * t; aa = rnd.Next(1, b1); ccc = dd - aa * (dd / b1);
+                    ans = 1; text = aa + "/" + b1 + " + " + ccc + "/" + dd + " = ?"; break;
+                default:
+                    x = rnd.Next(4, 25); y = rnd.Next(4, 25); gg = GCD(x, y);
+                    if (rnd.Next(2) == 0) { ans = gg; text = x + " 和 " + y + " 的最大公因数 = ?"; }
+                    else { ans = x * y / gg; text = x + " 和 " + y + " 的最小公倍数 = ?"; }
+                    break;
+            }
+        }
+
+        // 六年级：分数/小数除法、百分数及互化、混合运算、体积表面积、圆、行程、公倍数
+        static void Gen6(out string text, out int ans)
+        {
+            int k = rnd.Next(8), a, b, c, d, p, q, r, p2, q2, dd2, d1, q1, k2, bb, cc2, bc, kk2, x, y, gg, X, Y, rr, v, tt, g;
+            switch (k)
+            {
+                case 0: p = rnd.Next(2, 10); q = rnd.Next(2, 10); r = rnd.Next(1, 5); p2 = p; q2 = r * q; ans = r; text = p + "/" + q + " ÷ " + p2 + "/" + q2 + " = ?"; break;
+                case 1: d1 = new int[] { 12, 14, 15, 24, 25, 35, 45, 16, 18 }[rnd.Next(9)]; q1 = rnd.Next(2, 5); k2 = d1 * q1; if (k2 > 99) { q1 = 2; k2 = d1 * 2; } ans = q1; text = DecStr(k2) + " ÷ " + DecStr(d1) + " = ?"; break;
+                case 2: X = new int[] { 5, 10, 20, 25, 50, 60, 75, 80 }[rnd.Next(8)]; Y = rnd.Next(4, 80); g = 0; while ((X * Y) % 100 != 0 && g < 40) { Y = rnd.Next(4, 80); g++; } if ((X * Y) % 100 != 0) { X = 25; Y = 4 * rnd.Next(1, 20); } ans = X * Y / 100; text = X + "% × " + Y + " = ?"; break;
+                case 3:
+                    if (rnd.Next(2) == 0) { dd2 = rnd.Next(10, 100); ans = dd2; text = "0." + dd2 + " 化成百分数 = ?%"; }
+                    else { q = new int[] { 4, 5, 10, 20, 25 }[rnd.Next(5)]; p = rnd.Next(1, q); g = 0; while ((p * 100) % q != 0 && g < 20) { p = rnd.Next(1, q); g++; } if ((p * 100) % q != 0) { q = 4; p = 1; } ans = p * 100 / q; text = p + "/" + q + " 化成百分数 = ?%"; }
+                    break;
+                case 4:
+                    switch (rnd.Next(3))
+                    {
+                        case 0: a = rnd.Next(11, 30); b = rnd.Next(11, 30); c = rnd.Next(2, 10); d = rnd.Next(2, 10); ans = a * b + c * d; text = a + " × " + b + " + " + c + " × " + d + " = ?"; break;
+                        case 1: a = 2 * rnd.Next(1, 5); b = rnd.Next(1, 20); ans = 25 * a / 10 + b; text = "2.5 × " + a + " + " + b + " = ?"; break;
+                        default: d = rnd.Next(2, 10); bb = rnd.Next(2, 10); cc2 = rnd.Next(2, 10); bc = bb * cc2; kk2 = rnd.Next(2, 10); a = d * kk2 - bc; g = 0; while (a < 0 && g < 30) { d = rnd.Next(2, 10); bb = rnd.Next(2, 10); cc2 = rnd.Next(2, 10); bc = bb * cc2; kk2 = rnd.Next(2, 10); a = d * kk2 - bc; g++; } if (a < 0) a = 0; ans = kk2; text = "(" + a + " + " + bb + " × " + cc2 + ") ÷ " + d + " = ?"; break;
+                    }
+                    break;
+                case 5:
+                    switch (rnd.Next(4))
+                    {
+                        case 0: a = rnd.Next(2, 10); b = rnd.Next(2, 10); c = rnd.Next(2, 10); ans = a * b * c; text = "长方体长" + a + "宽" + b + "高" + c + "，体积=？"; break;
+                        case 1: a = rnd.Next(2, 8); ans = a * a * a; text = "正方体棱长" + a + "，体积=？"; break;
+                        case 2: a = rnd.Next(2, 10); b = rnd.Next(2, 10); c = rnd.Next(2, 10); ans = 2 * (a * b + b * c + a * c); text = "长方体长" + a + "宽" + b + "高" + c + "，表面积=？"; break;
+                        default: a = rnd.Next(2, 7); ans = 6 * a * a; text = "正方体棱长" + a + "，表面积=？"; break;
+                    }
+                    break;
+                case 6:
+                    rr = new int[] { 10, 20, 50 }[rnd.Next(3)];
+                    if (rnd.Next(2) == 0) { ans = 314 * rr * rr / 100; text = "半径" + rr + "的圆面积=？(π取3.14)"; }
+                    else { rr = (rr == 10) ? 50 : 100; ans = 628 * rr / 100; text = "半径" + rr + "的圆周长=？(π取3.14)"; }
+                    break;
+                default:
+                    if (rnd.Next(2) == 0) { v = 10 * rnd.Next(4, 10); tt = rnd.Next(2, 6); ans = v * tt; text = "汽车每小时行" + v + "千米，" + tt + "小时共行多少千米？"; }
+                    else { x = rnd.Next(4, 25); y = rnd.Next(4, 25); gg = GCD(x, y); if (rnd.Next(2) == 0) { ans = gg; text = x + " 和 " + y + " 的最大公因数 = ?"; } else { ans = x * y / gg; text = x + " 和 " + y + " 的最小公倍数 = ?"; } }
+                    break;
+            }
+        }
+
+        // k 为"十分位整数"（如 15 表示 1.5），十分位为 0 时显示整数
+        static string DecStr(int k)
+        {
+            int ip = k / 10, fr = k % 10;
+            return fr == 0 ? ip.ToString() : ip + "." + fr;
+        }
+
+        static int GCD(int x, int y)
+        {
+            while (y != 0) { int t = x % y; x = y; y = t; }
+            return x;
         }
 
         static List<Question> PickMath(int grade, int count)
