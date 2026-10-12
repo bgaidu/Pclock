@@ -123,12 +123,7 @@ namespace PCLock
 
             Log("UI THREAD EXCEPTION:\n" + ex + "\n[diag] " + diag);
 
-            // 绘制期"创建窗口句柄"失败（Win32Exception 0x80004005）：已被兜底、程序可继续，
-            // 记录诊断但不弹框；其它异常弹框提示。
-            System.ComponentModel.Win32Exception wex = ex as System.ComponentModel.Win32Exception;
-            if (wex != null && ex.Message != null && ex.Message.Contains("创建窗口句柄"))
-                return;
-
+            // 所有 UI 线程异常都记录并弹框提示（完全透明，不再静默/免弹任何一类异常）
             try
             {
                 MessageBox.Show("PCLock 出错：\n\n" + ex.Message +
