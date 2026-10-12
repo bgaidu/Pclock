@@ -448,6 +448,8 @@ namespace PCLock
 
             if (uninstall)
             {
+                // 卸载时清理系统屏保注册，避免残留指向已被删除的 PCLock.scr
+                try { ScreenSaver.Unregister(); } catch (Exception) { }
                 try { Store.RemoveAll(); } catch (Exception) { }
                 try
                 {
