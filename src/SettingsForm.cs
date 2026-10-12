@@ -451,9 +451,10 @@ namespace PCLock
             Controls.Add(btnExit);
             Controls.Add(btnRemove);
 
-            // 将菜单以外的内容整体放入可滚动面板，避免与顶部菜单重叠
+            // 将菜单以外的内容整体放入可滚动面板，面板位于菜单下方，避免与菜单重叠
             Panel content = new Panel();
-            content.Dock = DockStyle.Fill;
+            content.Location = new Point(0, menu.Height);
+            content.Size = new Size(ClientSize.Width, ClientSize.Height - menu.Height);
             content.AutoScroll = true;
             for (int i = Controls.Count - 1; i >= 0; i--)
             {
