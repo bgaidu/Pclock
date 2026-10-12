@@ -29,11 +29,11 @@ rem 按配置选择编译选项
 if "%CONFIG%"=="Debug" (
   set OPTS=/debug+ /define:DEBUG;TRACE /optimize-
 ) else (
-  set OPTS=/optimize+
+  set OPTS=/optimize+ /debug-
 )
 
-rem 输出目录（与脚本同级的 debug\ 或 release\）
-set OUTDIR=%~dp0%CONFIG%\
+rem 输出目录（bin\Debug 或 bin\Release）
+set OUTDIR=%~dp0bin\%CONFIG%\
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
 
 "%CSC%" /nologo /target:winexe /out:"%OUTDIR%PCLock.exe" /win32manifest:app.manifest %OPTS% /codepage:65001 ^
