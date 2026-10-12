@@ -471,6 +471,41 @@ namespace PCLock
             if (hook != null) { hook.Dispose(); hook = null; }
             if (uiTimer != null) { uiTimer.Stop(); uiTimer.Dispose(); uiTimer = null; }
         }
+
+        // === 屏保协议级处理 ===
+        // 让锁屏界面在 Windows 看来就是"屏保"：系统屏保超时向其发送 SC_SCREENSAVE 时，
+        // 我们吸收该命令（避免系统再叠加一层屏保），并阻止通过系统命令关闭/最小化/任务栏。
+        const int WM_SYSCOMMAND = 0x0112;
+        const int SC_SCREENSAVE = 0xF140;
+        const int SC_CLOSE = 0xF060;
+        const int SC_MINIMIZE = 0xF020;
+        const int SC_MAXIMIZE = 0xF030;
+        const int SC_RESTORE = 0xF120;
+        const int SC_TASKLIST = 0xF130;
+        const int SC_KEYMENU = 0xF100;
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_SYSCOMMAND)
+            {
+                int w = (int)m.WParam;
+                if (w == SC_SCREENSAVE)
+                {
+                    // 本身即屏保级锁屏：吸收系统屏保命令，防止叠加系统屏保
+                    m.Result = IntPtr.Zero;
+                    return;
+                }
+                int cmd = w & 0xFFF0;
+                if (cmd == SC_CLOSE || cmd == SC_MINIMIZE || cmd == SC_MAXIMIZE ||
+                    cmd == SC_RESTORE || cmd == SC_TASKLIST || cmd == SC_KEYMENU)
+                {
+                    // 锁屏期间禁止通过系统命令关闭/最小化/弹出任务栏
+                    m.Result = IntPtr.Zero;
+                    return;
+                }
+            }
+            base.WndProc(ref m);
+        }
     }
 
     /// <summary>低级键盘钩子：锁屏期间屏蔽 Win 键、Alt+Tab、Alt+Esc、Ctrl+Esc、Alt+方向键、Shift+Tab</summary>
