@@ -29,12 +29,13 @@
 ## 编译
 
 把整个 `pclock` 文件夹拷到目标机器，双击 `build.bat`。
-`build.bat` 优先调用 **.NET Framework 4.x** 自带的编译器（程序使用了 C# 6 字符串插值等特性，`.NET 3.5` 的 `csc` 无法编译），产物 `PCLock.exe` 在装有 .NET 4.0+ 的 Win7 上即可运行（如系统未带 4.x，请先安装 .NET Framework 4.x）。
+`build.bat` 优先调用 **.NET Framework 4.x** 自带的编译器，产物 `PCLock.exe` 面向 .NET 4.0 运行时，在装有 .NET 4.0+ 的 Win7 上即可运行（如系统未带 4.x，请先安装 .NET Framework 4.x）。
+产物目录同时包含 `PCLock.exe.config`（声明支持的运行时），须与 `PCLock.exe` 放在同一目录。
 单元测试：双击 `tests\run.bat`（同样基于系统自带 `csc`，零依赖）。
 
 ## 安装（只需一次）
 
-1. 在 C 盘建目录，如 `C:\Program Files\PCLock\`，把 `PCLock.exe` 放进去（路径建议固定，以后不要挪动）。
+1. 在 C 盘建目录，如 `C:\Program Files\PCLock\`，把 `PCLock.exe` 和 `PCLock.exe.config` **一起**放入（两者必须同目录，路径建议固定，以后不要挪动）。
 2. 右键 `PCLock.exe` → **以管理员身份运行**。程序会自动：
    - 创建开机自启计划任务（`schtasks` 名为 `PCLock`，最高权限、登录即启动、无 UAC 弹窗）；
    - 初始化默认设置（60 分钟、家长 PIN 1234、卸载密码 1234）；
