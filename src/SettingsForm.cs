@@ -93,6 +93,7 @@ namespace PCLock
             Controls.Add(err);
             Controls.Add(ok);
             Controls.Add(cancel);
+            Program.FlattenButtons(this);
         }
     }
 
@@ -480,6 +481,7 @@ namespace PCLock
             Controls.Add(content);
             this.AutoScroll = false;
             menu.BringToFront();
+            Program.FlattenButtons(this);
         }
 
         static TextBox NewBox(int x, int y)
@@ -559,6 +561,7 @@ namespace PCLock
             Controls.Add(desc);
             Controls.Add(ok);
             AcceptButton = ok;
+            Program.FlattenButtons(this);
         }
     }
 }

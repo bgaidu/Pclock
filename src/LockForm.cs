@@ -179,6 +179,9 @@ namespace PCLock
 
             // 低级钩子初始化放在最后，确保前面初始化失败时也能正确清理
             hook = new LowLevelHook();
+
+            // 扁平化按钮，规避视觉样式绘制期偶发的"创建窗口句柄"失败
+            Program.FlattenButtons(this);
         }
 
         static Label MakeLabel(string text, float size, FontStyle style, Color color)

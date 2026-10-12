@@ -230,5 +230,30 @@ namespace PCLock
             catch (Exception) { }
             return null;
         }
+
+        /// <summary>
+        /// 递归把窗体（含子容器）内标准按钮改为扁平样式。
+        /// 原因：FlatStyle.Standard 的按钮在启用视觉样式时，OnPaint 会走
+        /// ButtonRenderer.DrawParentBackground，它需要访问控件的 Handle；在窗口关闭/切换的
+        /// 竞态下子按钮收到迟到的 WM_PAINT、父窗口已释放时，CreateHandle 会失败
+        /// （Win32Exception 0x80004005"创建窗口句柄时出错"）。改扁平走经典绘制路径可根治。
+        /// </summary>
+        internal static void FlattenButtons(Control parent)
+        {
+            if (parent == null) return;
+            try
+            {
+                foreach (Control c in parent.Controls)
+                {
+                    Button b = c as Button;
+                    if (b != null)
+                    {
+                        try { b.FlatStyle = FlatStyle.Flat; } catch { }
+                    }
+                    if (c.HasChildren) FlattenButtons(c);
+                }
+            }
+            catch { }
+        }
     }
 }
