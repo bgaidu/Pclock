@@ -29,6 +29,16 @@ namespace PCLock
         {
             try
             {
+                // 日志滚动：超过 512KB 时清空重建，避免长期运行无限增长
+                if (File.Exists(LogPath))
+                {
+                    try
+                    {
+                        if (new FileInfo(LogPath).Length > 512 * 1024)
+                            File.Delete(LogPath);
+                    }
+                    catch { }
+                }
                 File.AppendAllText(LogPath,
                     "[" + DateTime.Now.ToString("HH:mm:ss.fff") + "] " + msg + Environment.NewLine);
             }

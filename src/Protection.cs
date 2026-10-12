@@ -17,6 +17,7 @@ namespace PCLock
         // Win7 进程访问权限
         const uint MASK_TERMINATE = 0x00000001;
         const uint MASK_WRITE_DAC = 0x00040000;
+        const uint MASK_SUSPEND_RESUME = 0x00000800; // 拒绝挂起进程（防 NtSuspendProcess）
         // Win10/11 新增权限位（在 Win7 上设置无效但不会报错）
         const uint PROCESS_SET_LIMITED_INFORMATION = 0x00002000;
         const uint PROCESS_SET_QUOTA = 0x00000100;
@@ -38,7 +39,7 @@ namespace PCLock
                 byte[] everyone = new byte[everyoneSid.BinaryLength];
                 everyoneSid.GetBinaryForm(everyone, 0);
 
-                uint denyMask = MASK_TERMINATE | MASK_WRITE_DAC;
+                uint denyMask = MASK_TERMINATE | MASK_WRITE_DAC | MASK_SUSPEND_RESUME;
                 uint allowMask = MASK_ALL & ~denyMask;
                 int aceSize = 8 + everyone.Length;
                 int aclSize = 8 + aceSize * 2;

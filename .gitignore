@@ -1,25 +1,15 @@
-# Build outputs
-*.exe
-!src/**/*.cs
+# 编译产物（VS / msbuild）
+bin/
+obj/
+*.user
+.vs/
 
-# Runtime logs
+# 临时 / 日志
 err.txt
 watchdog_log.txt
-watchdog_crash.log
+_build.exe
+_test.exe
+_t.cs
 
-# Crash dump backups
-.crashback/
-.tmp/
-*.tmp
-
-# OS / editor
-Thumbs.db
-desktop.ini
-.DS_Store
-.vs/
-.idea/
-*.user
-*.suo
-
-# 机器相关的本地调试解决方案（指向本机 exe 路径）
-PCLock.sln
+# 主程序编译产物（由 build.bat / VS 生成）
+PCLock.exe

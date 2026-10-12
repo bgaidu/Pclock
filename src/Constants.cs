@@ -15,6 +15,9 @@ namespace PCLock
         // === 时间相关（秒）===
         public const int DefaultDurationMinutes = 60;
         public static readonly int[] AllowedDurations = new int[] { 15, 30, 45, 60, 90, 120 };
+
+        // === 年级 / 学科 ===
+        public static readonly int[] AllowedGrades = new int[] { 1, 2, 3, 4, 5, 6 };
         public const int Warn5MinSec = 300;      // 5 分钟提醒阈值
         public const int Warn1MinSec = 60;       // 1 分钟提醒阈值
         public const int PersistIntervalSec = 15; // 持久化间隔
@@ -41,6 +44,8 @@ namespace PCLock
         public const int UiTimerIntervalMs = 500; // LockForm 保持全屏/焦点定时器
 
         // === 默认值 ===
+        public const int DefaultGrade = 3;
+        public const int DefaultSubject = (int)Subject.Mixed; // 0 = 混合随机
         public const string DefaultPin = "1234";
         public const string DefaultUninstallPin = "1234";
 

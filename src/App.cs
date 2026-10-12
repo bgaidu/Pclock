@@ -67,6 +67,9 @@ namespace PCLock
             // 下次开机不按离线时长扣减；硬断电收不到该事件，仍会在下次开机扣离线时长。
             // 若关机被其他程序取消，OnTick 会在 15 秒内重新写回时间戳。
             SystemEvents.SessionEnding += OnSessionEnding;
+            // 休眠/睡眠同样"不扣时长"：挂起时清时间戳、保存剩余，醒来后继续倒计时。
+            // （OnTick 在系统挂起期间停摆，醒来继续递减，本就不扣；此处显式清时间戳使其语义与关机一致。）
+            SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
             // 看门狗守护线程：看门狗进程被杀则重新拉起
             guardThread = new Thread(GuardLoop);
@@ -130,6 +133,22 @@ namespace PCLock
                 Store.SetLastSeenUtc(0);
             }
             catch (Exception) { }
+        }
+
+        void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
+        {
+            if (stopping) return;
+            // 休眠/睡眠：不扣时长，仅保存剩余并清时间戳（与正常关机一致）。
+            if (e.Mode == PowerModes.Suspend)
+            {
+                try
+                {
+                    Store.SetRemaining(remaining);
+                    Store.SetLastSeenUtc(0);
+                }
+                catch (Exception) { }
+            }
+            // Resume：不处理，OnTick 醒来后继续递减。
         }
 
         void OnTick(object sender, EventArgs e)

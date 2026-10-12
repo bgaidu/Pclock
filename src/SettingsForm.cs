@@ -106,13 +106,13 @@ namespace PCLock
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ShowInTaskbar = false;
-            ClientSize = new Size(470, 480);
+            ClientSize = new Size(470, 560);
 
             // ---- 使用时长 ----
             GroupBox gb = new GroupBox();
             gb.Text = "每次可用时长";
             gb.Location = new Point(15, 15);
-            gb.Size = new Size(440, 60);
+            gb.Size = new Size(440, 90);
             int[] mins = Constants.AllowedDurations;
             RadioButton[] rbs = new RadioButton[mins.Length];
             int cur = Store.GetDurationMinutes();
@@ -131,8 +131,8 @@ namespace PCLock
 
             Button saveDur = new Button();
             saveDur.Text = "保存时长";
-            saveDur.Location = new Point(340, 84);
-            saveDur.Size = new Size(115, 30);
+            saveDur.Location = new Point(330, 52);
+            saveDur.Size = new Size(100, 30);
             saveDur.Click += delegate
             {
                 for (int i = 0; i < rbRef.Length; i++)
@@ -147,12 +147,57 @@ namespace PCLock
                     }
                 }
             };
-            Controls.Add(saveDur);
+            gb.Controls.Add(saveDur);
+
+            // ---- 锁屏答题：年级 / 学科 ----
+            GroupBox gq = new GroupBox();
+            gq.Text = "锁屏答题（年级 / 学科）";
+            gq.Location = new Point(15, 115);
+            gq.Size = new Size(440, 110);
+            Controls.Add(gq);
+
+            Label gl1 = NewLbl("年级：", 15, 22);
+            gq.Controls.Add(gl1);
+            RadioButton[] grb = new RadioButton[Constants.AllowedGrades.Length];
+            int gcur = Store.GetGrade();
+            for (int i = 0; i < Constants.AllowedGrades.Length; i++)
+            {
+                grb[i] = new RadioButton();
+                grb[i].Text = Constants.AllowedGrades[i] + "年级";
+                grb[i].AutoSize = true;
+                grb[i].Location = new Point(70 + i * 62, 22);
+                grb[i].Tag = Constants.AllowedGrades[i];
+                if (Constants.AllowedGrades[i] == gcur) grb[i].Checked = true;
+                gq.Controls.Add(grb[i]);
+            }
+            Label gl2 = NewLbl("学科：", 15, 52);
+            gq.Controls.Add(gl2);
+            ComboBox cbSubj = new ComboBox();
+            cbSubj.Location = new Point(70, 48);
+            cbSubj.Size = new Size(150, 24);
+            cbSubj.DropDownStyle = ComboBoxStyle.DropDownList;
+            cbSubj.Items.AddRange(new string[] { "混合随机", "语文", "数学", "英语", "语文+数学", "语文+英语", "数学+英语" });
+            cbSubj.SelectedIndex = Store.GetSubject();
+            gq.Controls.Add(cbSubj);
+            Button saveEdu = new Button();
+            saveEdu.Text = "保存设置";
+            saveEdu.Location = new Point(330, 72);
+            saveEdu.Size = new Size(100, 30);
+            saveEdu.Click += delegate
+            {
+                int grade = gcur;
+                for (int i = 0; i < grb.Length; i++) if (grb[i].Checked) grade = (int)grb[i].Tag;
+                Store.SetGrade(grade);
+                Store.SetSubject(cbSubj.SelectedIndex);
+                MessageBox.Show(this, "已保存。下次锁屏生效（当前锁屏不中断）。", "电脑锁",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            };
+            gq.Controls.Add(saveEdu);
 
             // ---- 修改家长 PIN ----
             GroupBox gp = new GroupBox();
             gp.Text = "修改家长 PIN（锁屏界面\"家长入口\"用）";
-            gp.Location = new Point(15, 124);
+            gp.Location = new Point(15, 240);
             gp.Size = new Size(440, 90);
             TextBox pin1 = NewBox(90, 26);
             TextBox pin2 = NewBox(300, 26);
@@ -190,7 +235,7 @@ namespace PCLock
             // ---- 修改卸载密码 ----
             GroupBox gu = new GroupBox();
             gu.Text = "修改卸载密码（卸载本程序时必须输入）";
-            gu.Location = new Point(15, 224);
+            gu.Location = new Point(15, 345);
             gu.Size = new Size(440, 90);
             TextBox up1 = NewBox(90, 26);
             TextBox up2 = NewBox(300, 26);
@@ -228,7 +273,7 @@ namespace PCLock
             // ---- 操作按钮 ----
             Button btnLock = new Button();
             btnLock.Text = "立即锁定";
-            btnLock.Location = new Point(15, 330);
+            btnLock.Location = new Point(15, 450);
             btnLock.Size = new Size(140, 34);
             btnLock.Click += delegate
             {
@@ -238,7 +283,7 @@ namespace PCLock
 
             Button btnExit = new Button();
             btnExit.Text = "退出程序";
-            btnExit.Location = new Point(165, 330);
+            btnExit.Location = new Point(165, 450);
             btnExit.Size = new Size(140, 34);
             btnExit.Click += delegate
             {
@@ -253,7 +298,7 @@ namespace PCLock
 
             Button btnRemove = new Button();
             btnRemove.Text = "卸载并删除程序";
-            btnRemove.Location = new Point(315, 330);
+            btnRemove.Location = new Point(315, 450);
             btnRemove.Size = new Size(140, 34);
             btnRemove.Click += delegate
             {
@@ -277,10 +322,11 @@ namespace PCLock
             Controls.Add(btnRemove);
 
             Label tip = new Label();
-            tip.Text = "说明：锁屏后需全部答对 " + Constants.TotalQuestions + " 道口算题（答错清零重来），或由家长输入 PIN 解锁。";
+            tip.Text = "说明：锁屏后需全部答对 " + Constants.TotalQuestions +
+                " 道题（数学填答案，语文/英语四选一，答错清零重来），或由家长输入 PIN 解锁。";
             tip.ForeColor = Color.Gray;
             tip.AutoSize = true;
-            tip.Location = new Point(15, 400);
+            tip.Location = new Point(15, 495);
             Controls.Add(tip);
         }
 

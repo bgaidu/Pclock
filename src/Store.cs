@@ -37,6 +37,8 @@ namespace PCLock
                     SetStr("PinHash", NewHash(PCLockConstants.DefaultPin));               // 家长PIN默认 1234
                     SetStr("UnPinHash", NewHash(PCLockConstants.DefaultUninstallPin));    // 卸载密码默认 1234
                     SetInt("DurationMinutes", PCLockConstants.DefaultDurationMinutes);
+                    SetInt("Grade", PCLockConstants.DefaultGrade);
+                    SetInt("Subject", PCLockConstants.DefaultSubject);
                     SetInt("LockFlag", 0);
                     SetInt("RemainingSeconds", PCLockConstants.DefaultDurationMinutes * 60);
                     SetLong("LastSeenUtc", 0);
@@ -93,6 +95,23 @@ namespace PCLock
         }
 
         public static void SetDurationMinutes(int m) { SetInt("DurationMinutes", m); }
+
+        public static int GetGrade()
+        {
+            int g = GetInt("Grade", PCLockConstants.DefaultGrade);
+            foreach (int x in PCLockConstants.AllowedGrades)
+                if (x == g) return g;
+            return PCLockConstants.DefaultGrade;
+        }
+        public static void SetGrade(int g) { SetInt("Grade", g); }
+
+        public static int GetSubject()
+        {
+            int s = GetInt("Subject", PCLockConstants.DefaultSubject);
+            if (s < 0 || s > 6) return PCLockConstants.DefaultSubject;
+            return s;
+        }
+        public static void SetSubject(int s) { SetInt("Subject", s); }
 
         public static int GetLockFlag() { return GetInt("LockFlag", 0); }
         public static void SetLockFlag(int v) { SetInt("LockFlag", v); }

@@ -20,6 +20,8 @@ namespace PCLock
         Label statusLabel;
         TextBox answerBox;
         Button submitBtn;
+        Button[] optBtns = new Button[4];
+        Label meaningLabel;
         Button parentBtn;
         Panel parentPanel;
         Label pinLabel;
@@ -29,10 +31,11 @@ namespace PCLock
 
         int correctCount;   // 本轮已答对题数
         int qIndex;         // 当前第几题
-        List<MathQuestion> questions;
+        List<Question> questions;
         int wrongLeft;      // 答错后的冷却秒数
         int pinFails;
         int pinCooldown;
+        bool pinThreadRunning = false;   // PIN 验证在后台线程进行，避免 PBKDF2 卡 UI
         int lastCooldownTick;   // Environment.TickCount：冷却按真实秒数递减（uiTimer 每 500ms 触发）
         LowLevelHook hook;
         Timer uiTimer;
@@ -120,6 +123,25 @@ namespace PCLock
             parentPanel.Controls.Add(pinBackBtn);
             parentPanel.Visible = false;
 
+            // 选择题的 4 个选项按钮（拼音/汉语），默认隐藏，数学题时不显示
+            for (int i = 0; i < 4; i++)
+            {
+                optBtns[i] = new Button();
+                optBtns[i].Font = new Font("Microsoft YaHei", 16);
+                optBtns[i].Size = new Size(380, 50);
+                optBtns[i].FlatStyle = FlatStyle.Flat;
+                optBtns[i].FlatAppearance.BorderColor = Color.FromArgb(60, 70, 90);
+                optBtns[i].BackColor = Color.FromArgb(28, 38, 60);
+                optBtns[i].ForeColor = Color.White;
+                optBtns[i].Visible = false;
+                optBtns[i].Click += OnOptionClick;
+                Controls.Add(optBtns[i]);
+            }
+            // 语文词义解释
+            meaningLabel = MakeLabel("", 16, FontStyle.Regular, Color.FromArgb(170, 210, 170));
+            meaningLabel.Visible = false;
+            Controls.Add(meaningLabel);
+
             Controls.Add(titleLabel);
             Controls.Add(questionLabel);
             Controls.Add(statusLabel);
@@ -161,12 +183,31 @@ namespace PCLock
             titleLabel.Top = y;
             questionLabel.Left = cx - questionLabel.Width / 2;
             questionLabel.Top = y + 85;
-            answerBox.Left = cx - 160;
-            answerBox.Top = questionLabel.Bottom + 55;
-            submitBtn.Left = answerBox.Right + 24;
-            submitBtn.Top = answerBox.Top;
+
+            meaningLabel.Left = cx - meaningLabel.Width / 2;
+            meaningLabel.Top = questionLabel.Bottom + 14;
+
+            int bottomOfInput;
+            if (answerBox.Visible)
+            {
+                answerBox.Left = cx - 160;
+                answerBox.Top = questionLabel.Bottom + 55;
+                submitBtn.Left = answerBox.Right + 24;
+                submitBtn.Top = answerBox.Top;
+                bottomOfInput = answerBox.Bottom;
+            }
+            else
+            {
+                int mTop = questionLabel.Bottom + (meaningLabel.Visible ? meaningLabel.Height + 24 : 28);
+                for (int i = 0; i < 4; i++)
+                {
+                    optBtns[i].Left = cx - optBtns[i].Width / 2;
+                    optBtns[i].Top = mTop + i * 62;
+                }
+                bottomOfInput = optBtns[3].Bottom;
+            }
             statusLabel.Left = cx - statusLabel.Width / 2;
-            statusLabel.Top = answerBox.Bottom + 45;
+            statusLabel.Top = bottomOfInput + 40;
             parentBtn.Left = ClientSize.Width - parentBtn.Width - 24;
             parentBtn.Top = ClientSize.Height - parentBtn.Height - 24;
             parentPanel.Left = cx - parentPanel.Width / 2;
@@ -175,7 +216,9 @@ namespace PCLock
 
         void StartBatch()
         {
-            questions = MathUtil.NextBatch(Constants.TotalQuestions);
+            int grade = Store.GetGrade();
+            Subject subj = (Subject)Store.GetSubject();
+            questions = QuestionBank.GetBatch(grade, subj, Constants.TotalQuestions);
             qIndex = 0;
             ShowCurrentQuestion();
             UpdateStatus();
@@ -185,20 +228,48 @@ namespace PCLock
         {
             if (questions == null || questions.Count == 0) return;
             if (qIndex >= questions.Count) qIndex = questions.Count - 1;
-            questionLabel.Text = questions[qIndex].Text;
+            Question q = questions[qIndex];
+            questionLabel.Text = q.Prompt;
+            if (q.Type == QType.MathCalc)
+            {
+                answerBox.Visible = true;
+                submitBtn.Visible = true;
+                meaningLabel.Visible = false;
+                foreach (Button b in optBtns) b.Visible = false;
+            }
+            else
+            {
+                answerBox.Visible = false;
+                submitBtn.Visible = false;
+                meaningLabel.Visible = (q.Type == QType.ChinesePinyin);
+                meaningLabel.Text = q.Explanation;
+                for (int i = 0; i < 4; i++)
+                {
+                    optBtns[i].Visible = true;
+                    optBtns[i].Text = q.Options[i];
+                    optBtns[i].Tag = i;
+                }
+            }
             LayoutControls();
         }
 
         void UpdateStatus()
         {
             int cur = Math.Min(qIndex + 1, questions.Count);
-            statusLabel.Text = "共 " + Constants.TotalQuestions + " 题，全部答对即可解锁（当前第 " + cur +
+            string subj = "练习";
+            if (questions != null && qIndex < questions.Count)
+            {
+                Subject s = questions[qIndex].Subject;
+                subj = (s == Subject.Chinese) ? "语文" : (s == Subject.Math) ? "数学" : "英语";
+            }
+            statusLabel.Text = "共 " + Constants.TotalQuestions + " 题（" + subj + "），全部答对即可解锁（当前第 " + cur +
                 " 题，已答对 " + correctCount + " 题）";
         }
 
         void SubmitAnswer()
         {
             if (wrongLeft > 0) return;
+            if (questions[qIndex].Type != QType.MathCalc) return;
             int v;
             if (!int.TryParse(answerBox.Text.Trim(), out v))
             {
@@ -206,59 +277,91 @@ namespace PCLock
                 answerBox.Focus();
                 return;
             }
-            if (v == questions[qIndex].Answer)
-            {
-                correctCount++;
-                qIndex++;
-                if (qIndex >= questions.Count)
-                {
-                    if (UnlockRequested != null) UnlockRequested(this, EventArgs.Empty);
-                    return;
-                }
-                ShowCurrentQuestion();
-                UpdateStatus();
-            }
-            else
-            {
-                // 答错一题：整批清零，从第 1 题重新开始
-                correctCount = 0;
-                qIndex = 0;
-                ShowCurrentQuestion();
-                wrongLeft = Constants.WrongCooldownSec;
-                lastCooldownTick = Environment.TickCount;
-                answerBox.Enabled = false;
-                submitBtn.Enabled = false;
-                statusLabel.Text = "回答错误，全部清零重新开始，请 " + Constants.WrongCooldownSec + " 秒后再试";
-            }
+            if (v == questions[qIndex].Answer) OnCorrect();
+            else OnWrong();
             answerBox.Text = "";
             answerBox.Focus();
+        }
+
+        void OnOptionClick(object sender, EventArgs e)
+        {
+            if (wrongLeft > 0) return;
+            if (questions[qIndex].Type == QType.MathCalc) return;
+            int idx = (int)((Button)sender).Tag;
+            if (idx == questions[qIndex].CorrectIndex) OnCorrect();
+            else OnWrong();
+        }
+
+        void OnCorrect()
+        {
+            correctCount++;
+            qIndex++;
+            if (qIndex >= questions.Count)
+            {
+                if (UnlockRequested != null) UnlockRequested(this, EventArgs.Empty);
+                return;
+            }
+            ShowCurrentQuestion();
+            UpdateStatus();
+        }
+
+        void OnWrong()
+        {
+            // 答错一题：整批清零，从第 1 题重新开始
+            correctCount = 0;
+            qIndex = 0;
+            ShowCurrentQuestion();
+            wrongLeft = Constants.WrongCooldownSec;
+            lastCooldownTick = Environment.TickCount;
+            answerBox.Enabled = false;
+            submitBtn.Enabled = false;
+            foreach (Button b in optBtns) b.Enabled = false;
+            statusLabel.Text = "回答错误，全部清零重新开始，请 " + Constants.WrongCooldownSec + " 秒后再试";
         }
 
         void TryParentPin()
         {
             if (pinCooldown > 0) return;
-            if (Store.VerifyPin(pinBox.Text))
+            if (pinThreadRunning) return;
+            string pin = pinBox.Text;
+            pinThreadRunning = true;
+            pinOkBtn.Enabled = false;
+            // PBKDF2 验证约 0.2 秒，放到后台线程避免锁屏界面卡顿
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                if (UnlockRequested != null) UnlockRequested(this, EventArgs.Empty);
-            }
-            else
-            {
-                pinFails++;
-                pinBox.Text = "";
-                pinBox.Focus();
-                if (pinFails >= Constants.PinMaxFails)
+                bool ok = false;
+                try { ok = Store.VerifyPin(pin); }
+                catch (Exception) { }
+                try
                 {
-                    pinFails = 0;
-                    pinCooldown = Constants.PinCooldownSec;
-                    lastCooldownTick = Environment.TickCount;
-                    pinBox.Enabled = false;
-                    pinOkBtn.Enabled = false;
+                    this.Invoke((MethodInvoker)delegate
+                    {
+                        pinThreadRunning = false;
+                        if (ok)
+                        {
+                            if (UnlockRequested != null) UnlockRequested(this, EventArgs.Empty);
+                            return;
+                        }
+                        pinFails++;
+                        pinBox.Text = "";
+                        pinBox.Focus();
+                        if (pinFails >= Constants.PinMaxFails)
+                        {
+                            pinFails = 0;
+                            pinCooldown = Constants.PinCooldownSec;
+                            lastCooldownTick = Environment.TickCount;
+                            pinBox.Enabled = false;
+                            pinOkBtn.Enabled = false;
+                        }
+                        else
+                        {
+                            pinOkBtn.Enabled = true;
+                            pinLabel.Text = "PIN 错误（还可尝试 " + (Constants.PinMaxFails - pinFails) + " 次）";
+                        }
+                    });
                 }
-                else
-                {
-                    pinLabel.Text = "PIN 错误（还可尝试 " + (Constants.PinMaxFails - pinFails) + " 次）";
-                }
-            }
+                catch (Exception) { pinThreadRunning = false; }
+            });
         }
 
         void UiTick(object sender, EventArgs e)
@@ -283,6 +386,7 @@ namespace PCLock
                         {
                             answerBox.Enabled = true;
                             submitBtn.Enabled = true;
+                            foreach (Button b in optBtns) b.Enabled = true;
                             UpdateStatus();
                         }
                         else
