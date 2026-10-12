@@ -94,22 +94,32 @@ namespace PCLock
 
         public static void SetDurationMinutes(int m) { SetDurationMinutes(GetCurrentUser(), m); }
 
-        public static int GetGrade()
+        public static int GetGrade() { return GetGrade(GetCurrentUser()); }
+        public static void SetGrade(int g) { SetGrade(GetCurrentUser(), g); }
+
+        // 年级按用户：优先 U:<user>:Grade，回退全局 Grade，再回退默认
+        public static int GetGrade(string user)
         {
-            int g = GetInt("Grade", PCLockConstants.DefaultGrade);
+            int g = GetInt(UKey(user, "Grade"), -1);
+            if (g < 0) g = GetInt("Grade", PCLockConstants.DefaultGrade);
             foreach (int x in PCLockConstants.AllowedGrades)
                 if (x == g) return g;
             return PCLockConstants.DefaultGrade;
         }
-        public static void SetGrade(int g) { SetInt("Grade", g); }
+        public static void SetGrade(string user, int g) { SetInt(UKey(user, "Grade"), g); }
 
-        public static int GetSubject()
+        public static int GetSubject() { return GetSubject(GetCurrentUser()); }
+        public static void SetSubject(int s) { SetSubject(GetCurrentUser(), s); }
+
+        // 学科按用户：优先 U:<user>:Subject，回退全局 Subject，再回退默认
+        public static int GetSubject(string user)
         {
-            int s = GetInt("Subject", PCLockConstants.DefaultSubject);
+            int s = GetInt(UKey(user, "Subject"), -1);
+            if (s < 0) s = GetInt("Subject", PCLockConstants.DefaultSubject);
             if (s < 0 || s > 6) return PCLockConstants.DefaultSubject;
             return s;
         }
-        public static void SetSubject(int s) { SetInt("Subject", s); }
+        public static void SetSubject(string user, int s) { SetInt(UKey(user, "Subject"), s); }
 
         public static int GetLockFlag() { return GetInt("LockFlag", 0); }
         public static void SetLockFlag(int v) { SetInt("LockFlag", v); }

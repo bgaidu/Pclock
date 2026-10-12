@@ -185,7 +185,7 @@ namespace PCLock
 
             // ---- 锁屏答题：年级 / 学科（全局共用）----
             GroupBox gq = new GroupBox();
-            gq.Text = "锁屏答题（年级 / 学科，全局共用）";
+            gq.Text = "锁屏答题（年级 / 学科，按用户）";
             gq.Location = new Point(15, 180);
             gq.Size = new Size(440, 110);
             Controls.Add(gq);
@@ -193,7 +193,7 @@ namespace PCLock
             Label gl1 = NewLbl("年级：", 15, 22);
             gq.Controls.Add(gl1);
             RadioButton[] grb = new RadioButton[Constants.AllowedGrades.Length];
-            int gcur = Store.GetGrade();
+            int gcur = Store.GetGrade(cbUser.Text);
             for (int i = 0; i < Constants.AllowedGrades.Length; i++)
             {
                 grb[i] = new RadioButton();
@@ -211,7 +211,7 @@ namespace PCLock
             cbSubj.Size = new Size(150, 24);
             cbSubj.DropDownStyle = ComboBoxStyle.DropDownList;
             cbSubj.Items.AddRange(new string[] { "混合随机", "语文", "数学", "英语", "语文+数学", "语文+英语", "数学+英语" });
-            cbSubj.SelectedIndex = Store.GetSubject();
+            cbSubj.SelectedIndex = Store.GetSubject(cbUser.Text);
             gq.Controls.Add(cbSubj);
             Button saveEdu = new Button();
             saveEdu.Text = "保存设置";
@@ -219,11 +219,12 @@ namespace PCLock
             saveEdu.Size = new Size(100, 30);
             saveEdu.Click += delegate
             {
-                int grade = gcur;
+                string u = cbUser.Text;
+                int grade = Store.GetGrade(u);
                 for (int i = 0; i < grb.Length; i++) if (grb[i].Checked) grade = (int)grb[i].Tag;
-                Store.SetGrade(grade);
-                Store.SetSubject(cbSubj.SelectedIndex);
-                MessageBox.Show(this, "已保存。下次锁屏生效（当前锁屏不中断）。", "电脑锁",
+                Store.SetGrade(u, grade);
+                Store.SetSubject(u, cbSubj.SelectedIndex);
+                MessageBox.Show(this, "已为「" + u + "」保存。下次该用户锁屏生效（当前锁屏不中断）。", "电脑锁",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             };
             gq.Controls.Add(saveEdu);
@@ -381,6 +382,10 @@ namespace PCLock
                 txtWin.Text = Store.GetWindow(u);
                 int used = Store.GetUsedToday(u);
                 lblUsed.Text = "「" + u + "」今日已用：" + (used / 60) + " 分 " + (used % 60) + " 秒";
+                // 锁屏答题：年级 / 学科同样按用户刷新
+                int gsel = Store.GetGrade(u);
+                for (int i = 0; i < grb.Length; i++) grb[i].Checked = ((int)grb[i].Tag == gsel);
+                cbSubj.SelectedIndex = Store.GetSubject(u);
             };
             cbUser.SelectedIndexChanged += delegate { RefreshUser(); };
             RefreshUser();
