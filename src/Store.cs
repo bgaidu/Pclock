@@ -195,6 +195,66 @@ namespace PCLock
         }
         public static void SetDurationMinutes(string user, int m) { SetInt(UKey(user, "Dur"), m); }
 
+        // === 年级多选 / 科目多选（按用户）===
+        // 存为逗号分隔字符串：Grades="1,3,5"；Subjects="1,2"（1=语文 2=数学 3=英语）；空=默认
+        public static int[] GetGrades() { return GetGrades(GetCurrentUser()); }
+        public static int[] GetGrades(string user)
+        {
+            List<int> r = new List<int>();
+            string s = GetStr(UKey(user, "Grades"), "");
+            if (!string.IsNullOrEmpty(s))
+                foreach (string t in s.Split(','))
+                {
+                    int g;
+                    if (int.TryParse(t.Trim(), out g))
+                        foreach (int x in PCLockConstants.AllowedGrades)
+                            if (x == g && !r.Contains(g)) r.Add(g);
+                }
+            if (r.Count == 0) foreach (int x in PCLockConstants.AllowedGrades) r.Add(x); // 默认全选
+            r.Sort();
+            return r.ToArray();
+        }
+        public static void SetGrades(int[] gs) { SetGrades(GetCurrentUser(), gs); }
+        public static void SetGrades(string user, int[] gs)
+        {
+            List<int> r = new List<int>();
+            if (gs != null) foreach (int g in gs)
+                foreach (int x in PCLockConstants.AllowedGrades)
+                    if (x == g && !r.Contains(g)) r.Add(x);
+            if (r.Count == 0) return;
+            r.Sort();
+            StringBuilder sb = new StringBuilder();
+            foreach (int g in r) { if (sb.Length > 0) sb.Append(','); sb.Append(g); }
+            SetStr(UKey(user, "Grades"), sb.ToString());
+        }
+
+        public static int[] GetSubjects() { return GetSubjects(GetCurrentUser()); }
+        public static int[] GetSubjects(string user)
+        {
+            List<int> r = new List<int>();
+            string s = GetStr(UKey(user, "Subjects"), "");
+            if (!string.IsNullOrEmpty(s))
+                foreach (string t in s.Split(','))
+                {
+                    int v;
+                    if (int.TryParse(t.Trim(), out v) && v >= 1 && v <= 3 && !r.Contains(v)) r.Add(v);
+                }
+            if (r.Count == 0) { r.Add(1); r.Add(2); r.Add(3); } // 默认三科
+            r.Sort();
+            return r.ToArray();
+        }
+        public static void SetSubjects(int[] ss) { SetSubjects(GetCurrentUser(), ss); }
+        public static void SetSubjects(string user, int[] ss)
+        {
+            List<int> r = new List<int>();
+            if (ss != null) foreach (int v in ss) if (v >= 1 && v <= 3 && !r.Contains(v)) r.Add(v);
+            if (r.Count == 0) return;
+            r.Sort();
+            StringBuilder sb = new StringBuilder();
+            foreach (int v in r) { if (sb.Length > 0) sb.Append(','); sb.Append(v); }
+            SetStr(UKey(user, "Subjects"), sb.ToString());
+        }
+
         /// <summary>每日可用时段字符串，如 "08:00-12:00;14:00-21:00"；空=全天可用</summary>
         public static string GetWindow(string user) { return GetStr(UKey(user, "Win"), ""); }
         public static void SetWindow(string user, string w) { SetStr(UKey(user, "Win"), w == null ? "" : w); }

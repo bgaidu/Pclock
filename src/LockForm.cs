@@ -242,9 +242,11 @@ namespace PCLock
 
         void StartBatch()
         {
-            int grade = Store.GetGrade();
-            Subject subj = (Subject)Store.GetSubject();
-            questions = QuestionBank.GetBatch(grade, subj, Constants.TotalQuestions);
+            int[] grades = Store.GetGrades();
+            int[] subjInts = Store.GetSubjects();
+            Subject[] subs = new Subject[subjInts.Length];
+            for (int i = 0; i < subjInts.Length; i++) subs[i] = (Subject)subjInts[i];
+            questions = QuestionBank.GetBatch(grades, subs, Constants.TotalQuestions);
             qIndex = 0;
             ShowCurrentQuestion();
             UpdateStatus();

@@ -473,6 +473,106 @@ namespace PCLock
             return list;
         }
 
+        // ===== 多选版：科目多选 + 年级多选 =====
+        /// <summary>按多选科目与多选年级出 count 道题（各科目从选中年级范围内取题）。</summary>
+        public static List<Question> GetBatch(int[] grades, Subject[] subjects, int count)
+        {
+            int[] gs = (grades != null && grades.Length > 0) ? grades : new int[] { 3 };
+            Subject[] ss = (subjects != null && subjects.Length > 0)
+                ? subjects : new Subject[] { Subject.Chinese, Subject.Math, Subject.English };
+            return PickFromSubjects(gs, count, ss);
+        }
+
+        // 多选版：科目间轮转均派；数学按选中年级随机难度，语/英取选中年级词库
+        static List<Question> PickFromSubjects(int[] grades, int total, params Subject[] subs)
+        {
+            List<List<Question>> pools = new List<List<Question>>();
+            foreach (var s in subs)
+            {
+                if (s == Subject.Math) pools.Add(MakeMathBatch(grades, total));
+                else if (s == Subject.Chinese) pools.Add(BuildChinesePool(grades, total));
+                else pools.Add(BuildEnglishPool(grades, total));
+            }
+            List<Question> list = new List<Question>();
+            int[] used = new int[subs.Length];
+            int guard = 0;
+            while (list.Count < total && guard < total * 40 + 40)
+            {
+                guard++;
+                bool took = false;
+                for (int i = 0; i < subs.Length && list.Count < total; i++)
+                {
+                    if (used[i] >= pools[i].Count) continue;
+                    list.Add(pools[i][used[i]]);
+                    used[i]++;
+                    took = true;
+                }
+                if (!took) break;
+            }
+            Shuffle(list);
+            return list;
+        }
+
+        // 生成 n 道互不相同（按题干）的数学题，年级在 grades 中随机选取
+        static List<Question> MakeMathBatch(int[] grades, int n)
+        {
+            List<Question> list = new List<Question>();
+            HashSet<string> seen = new HashSet<string>();
+            int guard = 0;
+            while (list.Count < n && guard < n * 80 + 80)
+            {
+                guard++;
+                Question q = MakeMath(grades[rnd.Next(grades.Length)]);
+                if (seen.Add(q.Prompt)) list.Add(q);
+            }
+            return list;
+        }
+
+        static List<Question> BuildChinesePool(int[] grades, int total)
+        {
+            List<WordEntry> pool = FilterGrades(chinese, grades);
+            Shuffle(pool);
+            List<Question> q = new List<Question>();
+            if (pool.Count == 0) return q;
+            for (int i = 0; i < total; i++)
+            {
+                WordEntry e = (i < pool.Count) ? pool[i] : pool[rnd.Next(pool.Count)];
+                q.Add(BuildChinese(e));
+            }
+            return q;
+        }
+
+        static List<Question> BuildEnglishPool(int[] grades, int total)
+        {
+            List<EnglishEntry> pool = FilterGrades(english, grades);
+            Shuffle(pool);
+            List<Question> q = new List<Question>();
+            if (pool.Count == 0) return q;
+            for (int i = 0; i < total; i++)
+            {
+                EnglishEntry e = (i < pool.Count) ? pool[i] : pool[rnd.Next(pool.Count)];
+                q.Add(BuildEnglish(e));
+            }
+            return q;
+        }
+
+        static List<WordEntry> FilterGrades(List<WordEntry> src, int[] grades)
+        {
+            List<WordEntry> r = new List<WordEntry>();
+            foreach (var x in src)
+                foreach (int g in grades)
+                    if (x.Grade == g) { r.Add(x); break; }
+            return r;
+        }
+        static List<EnglishEntry> FilterGrades(List<EnglishEntry> src, int[] grades)
+        {
+            List<EnglishEntry> r = new List<EnglishEntry>();
+            foreach (var x in src)
+                foreach (int g in grades)
+                    if (x.Grade == g) { r.Add(x); break; }
+            return r;
+        }
+
         static Question BuildChinese(WordEntry e)
         {
             Question q = new Question();

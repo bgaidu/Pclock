@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -183,47 +184,54 @@ namespace PCLock
             };
             gb.Controls.Add(saveDur);
 
-            // ---- 锁屏答题：年级 / 学科（全局共用）----
+            // ---- 锁屏答题：年级 / 科目（可多选，按用户）----
             GroupBox gq = new GroupBox();
-            gq.Text = "锁屏答题（年级 / 学科，按用户）";
+            gq.Text = "锁屏答题（年级 / 科目，可多选）";
             gq.Location = new Point(15, 180);
-            gq.Size = new Size(440, 110);
+            gq.Size = new Size(440, 122);
             Controls.Add(gq);
 
-            Label gl1 = NewLbl("年级：", 15, 22);
+            Label gl1 = NewLbl("年级：", 15, 24);
             gq.Controls.Add(gl1);
-            RadioButton[] grb = new RadioButton[Constants.AllowedGrades.Length];
-            int gcur = Store.GetGrade(cbUser.Text);
+            CheckBox[] gcb = new CheckBox[Constants.AllowedGrades.Length];
             for (int i = 0; i < Constants.AllowedGrades.Length; i++)
             {
-                grb[i] = new RadioButton();
-                grb[i].Text = Constants.AllowedGrades[i] + "年级";
-                grb[i].AutoSize = true;
-                grb[i].Location = new Point(70 + i * 62, 22);
-                grb[i].Tag = Constants.AllowedGrades[i];
-                if (Constants.AllowedGrades[i] == gcur) grb[i].Checked = true;
-                gq.Controls.Add(grb[i]);
+                gcb[i] = new CheckBox();
+                gcb[i].Text = Constants.AllowedGrades[i] + "年级";
+                gcb[i].AutoSize = true;
+                gcb[i].Location = new Point(70 + i * 62, 22);
+                gcb[i].Tag = Constants.AllowedGrades[i];
+                gq.Controls.Add(gcb[i]);
             }
-            Label gl2 = NewLbl("学科：", 15, 52);
+            Label gl2 = NewLbl("科目：", 15, 62);
             gq.Controls.Add(gl2);
-            ComboBox cbSubj = new ComboBox();
-            cbSubj.Location = new Point(70, 48);
-            cbSubj.Size = new Size(150, 24);
-            cbSubj.DropDownStyle = ComboBoxStyle.DropDownList;
-            cbSubj.Items.AddRange(new string[] { "混合随机", "语文", "数学", "英语", "语文+数学", "语文+英语", "数学+英语" });
-            cbSubj.SelectedIndex = Store.GetSubject(cbUser.Text);
-            gq.Controls.Add(cbSubj);
+            int[] subjVals = new int[] { 1, 2, 3 };
+            string[] subjNames = new string[] { "语文", "数学", "英语" };
+            CheckBox[] scb = new CheckBox[3];
+            for (int i = 0; i < 3; i++)
+            {
+                scb[i] = new CheckBox();
+                scb[i].Text = subjNames[i];
+                scb[i].AutoSize = true;
+                scb[i].Location = new Point(70 + i * 72, 60);
+                scb[i].Tag = subjVals[i];
+                gq.Controls.Add(scb[i]);
+            }
             Button saveEdu = new Button();
             saveEdu.Text = "保存设置";
-            saveEdu.Location = new Point(330, 72);
+            saveEdu.Location = new Point(330, 86);
             saveEdu.Size = new Size(100, 30);
             saveEdu.Click += delegate
             {
                 string u = cbUser.Text;
-                int grade = Store.GetGrade(u);
-                for (int i = 0; i < grb.Length; i++) if (grb[i].Checked) grade = (int)grb[i].Tag;
-                Store.SetGrade(u, grade);
-                Store.SetSubject(u, cbSubj.SelectedIndex);
+                List<int> gs = new List<int>();
+                for (int i = 0; i < gcb.Length; i++) if (gcb[i].Checked) gs.Add((int)gcb[i].Tag);
+                List<int> ss = new List<int>();
+                for (int i = 0; i < scb.Length; i++) if (scb[i].Checked) ss.Add((int)scb[i].Tag);
+                if (gs.Count == 0) { MessageBox.Show(this, "请至少选择一个年级。", "电脑锁"); return; }
+                if (ss.Count == 0) { MessageBox.Show(this, "请至少选择一个科目。", "电脑锁"); return; }
+                Store.SetGrades(u, gs.ToArray());
+                Store.SetSubjects(u, ss.ToArray());
                 MessageBox.Show(this, "已为「" + u + "」保存。下次该用户锁屏生效（当前锁屏不中断）。", "电脑锁",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             };
@@ -382,10 +390,11 @@ namespace PCLock
                 txtWin.Text = Store.GetWindow(u);
                 int used = Store.GetUsedToday(u);
                 lblUsed.Text = "「" + u + "」今日已用：" + (used / 60) + " 分 " + (used % 60) + " 秒";
-                // 锁屏答题：年级 / 学科同样按用户刷新
-                int gsel = Store.GetGrade(u);
-                for (int i = 0; i < grb.Length; i++) grb[i].Checked = ((int)grb[i].Tag == gsel);
-                cbSubj.SelectedIndex = Store.GetSubject(u);
+                // 锁屏答题：年级 / 科目（多选）按用户刷新
+                int[] gsel = Store.GetGrades(u);
+                for (int i = 0; i < gcb.Length; i++) gcb[i].Checked = Array.IndexOf(gsel, (int)gcb[i].Tag) >= 0;
+                int[] ssel = Store.GetSubjects(u);
+                for (int i = 0; i < scb.Length; i++) scb[i].Checked = Array.IndexOf(ssel, (int)scb[i].Tag) >= 0;
             };
             cbUser.SelectedIndexChanged += delegate { RefreshUser(); };
             RefreshUser();
