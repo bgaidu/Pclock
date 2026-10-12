@@ -102,15 +102,15 @@ namespace PCLock
         static void OnThreadException(object sender, ThreadExceptionEventArgs e)
         {
             Exception ex = e.Exception;
-            Log("UI THREAD EXCEPTION:\n" + ex);
 
             // 绘制期偶发的"创建窗口句柄"失败（Win32Exception 0x80004005）：
-            // 多为窗口开关/重绘竞态或系统资源瞬时紧张，已被此兜底捕获、程序可继续运行，
-            // 仅记录日志，不再弹错误框打扰用户。
+            // 多为窗口开关/重绘竞态或系统资源瞬时紧张，已被此兜底捕获、程序可继续运行。
+            // 对此类异常完全静默（不写 err.txt、不弹框），避免 err.txt 出现误导性的"错误日志"。
             System.ComponentModel.Win32Exception wex = ex as System.ComponentModel.Win32Exception;
             if (wex != null && ex.Message != null && ex.Message.Contains("创建窗口句柄"))
                 return;
 
+            Log("UI THREAD EXCEPTION:\n" + ex);
             try
             {
                 MessageBox.Show("PCLock 出错：\n\n" + ex.Message +
