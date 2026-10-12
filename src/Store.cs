@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Win32;
@@ -37,6 +38,7 @@ namespace PCLock
                     SetStr("PinHash", NewHash(PCLockConstants.DefaultPin));               // 家长PIN默认 1234
                     SetStr("UnPinHash", NewHash(PCLockConstants.DefaultUninstallPin));    // 卸载密码默认 1234
                     SetInt("DurationMinutes", PCLockConstants.DefaultDurationMinutes);
+                    SetDurationMinutes(PCLockConstants.DefaultDurationMinutes); // 为当前用户写入默认时长
                     SetInt("Grade", PCLockConstants.DefaultGrade);
                     SetInt("Subject", PCLockConstants.DefaultSubject);
                     SetInt("LockFlag", 0);
@@ -87,14 +89,10 @@ namespace PCLock
 
         public static int GetDurationMinutes()
         {
-            int d = GetInt("DurationMinutes", PCLockConstants.DefaultDurationMinutes);
-            int[] ok = PCLockConstants.AllowedDurations;
-            for (int i = 0; i < ok.Length; i++)
-                if (ok[i] == d) return d;
-            return PCLockConstants.DefaultDurationMinutes;
+            return GetDurationMinutes(GetCurrentUser());
         }
 
-        public static void SetDurationMinutes(int m) { SetInt("DurationMinutes", m); }
+        public static void SetDurationMinutes(int m) { SetDurationMinutes(GetCurrentUser(), m); }
 
         public static int GetGrade()
         {
@@ -122,21 +120,13 @@ namespace PCLock
         /// <summary>今日已用秒数（按本地日期区分；跨天自动视为 0）</summary>
         public static int GetUsedToday()
         {
-            if (GetStr("UsedDate", "") != DateTime.Now.ToString("yyyy-MM-dd")) return 0;
-            return GetInt("UsedSeconds", 0);
+            return GetUsedToday(GetCurrentUser());
         }
 
         /// <summary>累加今日已用秒数；跨天自动重置再累加</summary>
         public static void AddUsedSeconds(int sec)
         {
-            if (sec <= 0) return;
-            string today = DateTime.Now.ToString("yyyy-MM-dd");
-            if (GetStr("UsedDate", "") != today)
-            {
-                SetStr("UsedDate", today);
-                SetInt("UsedSeconds", 0);
-            }
-            SetInt("UsedSeconds", GetInt("UsedSeconds", 0) + sec);
+            AddUsedSeconds(GetCurrentUser(), sec);
         }
 
         /// <summary>
@@ -145,6 +135,108 @@ namespace PCLock
         /// </summary>
         public static long GetLastSeenUtc() { return GetLong("LastSeenUtc", 0); }
         public static void SetLastSeenUtc(long ticks) { SetLong("LastSeenUtc", ticks); }
+
+        // === 按用户分别限制 / 统计 ===
+        /// <summary>当前登录的 Windows 用户名（作为按用户隔离的维度）</summary>
+        public static string GetCurrentUser()
+        {
+            try { return Environment.UserName ?? "default"; }
+            catch { return "default"; }
+        }
+
+        /// <summary>按用户键名前缀：U:&lt;user&gt;:&lt;field&gt;</summary>
+        static string UKey(string user, string field) { return "U:" + (user ?? "default") + ":" + field; }
+
+        /// <summary>列出所有已配置（或当前）的 Windows 用户，供设置界面切换</summary>
+        public static string[] ListUsers()
+        {
+            List<string> list = new List<string>();
+            try
+            {
+                foreach (string name in root.GetValueNames())
+                {
+                    if (name.StartsWith("U:"))
+                    {
+                        int i1 = name.IndexOf(':');
+                        int i2 = name.IndexOf(':', i1 + 1);
+                        if (i2 > i1)
+                        {
+                            string u = name.Substring(i1 + 1, i2 - i1 - 1);
+                            if (u.Length > 0 && !list.Contains(u)) list.Add(u);
+                        }
+                    }
+                }
+            }
+            catch (Exception) { }
+            list.Sort();
+            string cur = GetCurrentUser();
+            if (!list.Contains(cur)) list.Add(cur);
+            return list.ToArray();
+        }
+
+        public static int GetDurationMinutes(string user)
+        {
+            int d = GetInt(UKey(user, "Dur"), -1);
+            if (d < 0) d = GetInt("DurationMinutes", PCLockConstants.DefaultDurationMinutes);
+            int[] ok = PCLockConstants.AllowedDurations;
+            for (int i = 0; i < ok.Length; i++)
+                if (ok[i] == d) return d;
+            return PCLockConstants.DefaultDurationMinutes;
+        }
+        public static void SetDurationMinutes(string user, int m) { SetInt(UKey(user, "Dur"), m); }
+
+        /// <summary>每日可用时段字符串，如 "08:00-12:00;14:00-21:00"；空=全天可用</summary>
+        public static string GetWindow(string user) { return GetStr(UKey(user, "Win"), ""); }
+        public static void SetWindow(string user, string w) { SetStr(UKey(user, "Win"), w == null ? "" : w); }
+
+        /// <summary>当前是否处于该用户的允许使用时段内（未配置=全天可用）</summary>
+        public static bool IsWithinWindow() { return IsWithinWindow(GetCurrentUser()); }
+        public static bool IsWithinWindow(string user)
+        {
+            string w = GetWindow(user);
+            if (string.IsNullOrWhiteSpace(w)) return true;
+            TimeSpan now = DateTime.Now.TimeOfDay;
+            foreach (string raw in w.Split(new char[] { ';', ',', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string seg = raw.Trim();
+                if (seg.Length == 0) continue;
+                int dash = seg.IndexOf('-');
+                if (dash < 0) continue;
+                TimeSpan? a = ParseHm(seg.Substring(0, dash));
+                TimeSpan? b = ParseHm(seg.Substring(dash + 1));
+                if (a.HasValue && b.HasValue && a.Value <= now && now <= b.Value) return true;
+            }
+            return false;
+        }
+        static TimeSpan? ParseHm(string s)
+        {
+            s = s.Trim();
+            int colon = s.IndexOf(':');
+            if (colon < 0) return null;
+            int h, m;
+            if (!int.TryParse(s.Substring(0, colon), out h)) return null;
+            if (!int.TryParse(s.Substring(colon + 1), out m)) return null;
+            if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+            return new TimeSpan(h, m, 0);
+        }
+
+        public static int GetUsedToday(string user)
+        {
+            if (GetStr(UKey(user, "UsedDate"), "") != DateTime.Now.ToString("yyyy-MM-dd")) return 0;
+            return GetInt(UKey(user, "UsedSec"), 0);
+        }
+        public static void AddUsedSeconds(string user, int sec)
+        {
+            if (sec <= 0) return;
+            string today = DateTime.Now.ToString("yyyy-MM-dd");
+            string dateKey = UKey(user, "UsedDate");
+            if (GetStr(dateKey, "") != today)
+            {
+                SetStr(dateKey, today);
+                SetInt(UKey(user, "UsedSec"), 0);
+            }
+            SetInt(UKey(user, "UsedSec"), GetInt(UKey(user, "UsedSec"), 0) + sec);
+        }
 
         // === PIN 哈希 ===
         // HKLM\SOFTWARE\PCLock 普通用户可读，4 位纯数字 PIN 若用快速哈希可被离线枚举，

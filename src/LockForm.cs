@@ -39,9 +39,12 @@ namespace PCLock
         int lastCooldownTick;   // Environment.TickCount：冷却按真实秒数递减（uiTimer 每 500ms 触发）
         LowLevelHook hook;
         Timer uiTimer;
+        bool dueToWindow;   // true=因"不在每日可用时段"而锁（硬锁）
+        bool autoUnlocked;  // 时段开始自动解锁只触发一次
 
-        public LockForm()
+        public LockForm(bool dueToWindow = false)
         {
+            this.dueToWindow = dueToWindow;
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
             Rectangle vs = SystemInformation.VirtualScreen;
@@ -157,7 +160,21 @@ namespace PCLock
             uiTimer.Tick += UiTick;
             uiTimer.Start();
 
-            StartBatch();
+            if (dueToWindow)
+            {
+                titleLabel.Text = "当前不在使用时段";
+                string w = (App.Instance != null) ? Store.GetWindow(App.Instance.CurrentUser) : "";
+                questionLabel.Text = string.IsNullOrWhiteSpace(w) ? "当前不在允许使用时段" : ("允许使用时段：\n" + w);
+                statusLabel.Text = "时段开始后自动解锁，或由家长输入 PIN 解锁。";
+                answerBox.Visible = false;
+                submitBtn.Visible = false;
+                meaningLabel.Visible = false;
+                foreach (Button b in optBtns) b.Visible = false;
+            }
+            else
+            {
+                StartBatch();
+            }
             LayoutControls();
 
             // 低级钩子初始化放在最后，确保前面初始化失败时也能正确清理
@@ -410,6 +427,13 @@ namespace PCLock
                     }
                 }
             }
+
+            // 时段外硬锁：一旦进入允许时段，自动解锁（开始新一轮计时）
+            if (dueToWindow && !autoUnlocked && App.Instance != null && App.Instance.IsWithinWindow())
+            {
+                autoUnlocked = true;
+                if (UnlockRequested != null) UnlockRequested(this, EventArgs.Empty);
+            }
         }
 
         protected override void OnShown(EventArgs e)
@@ -417,7 +441,7 @@ namespace PCLock
             base.OnShown(e);
             TopMost = true;
             Activate();
-            answerBox.Focus();
+            if (!dueToWindow) answerBox.Focus();
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)

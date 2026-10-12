@@ -19,6 +19,7 @@ namespace PCLock
         System.Windows.Forms.Timer timer;
         LockForm lockForm;
         int remaining;          // 剩余秒数
+        string currentUser;     // 当前 Windows 用户（按用户分别限制）
         bool stopping;
         bool warned5, warned1; // 本轮是否已弹过 5 分钟 / 1 分钟提醒
         bool paused;            // 家长临时暂停计时（孩子仍可用，但不再倒计时）
@@ -43,9 +44,10 @@ namespace PCLock
             Protection.ProtectSelf();     // 自保护：拒绝任务管理器结束进程
             EnsureStartup();              // 开机自启（计划任务最高权限，无 UAC 弹窗）
 
+            currentUser = Store.GetCurrentUser();
             remaining = Store.GetRemaining();
             bool midSession = remaining > 0;      // 有未用完的会话；-1/0 = 全新状态
-            if (!midSession) remaining = Store.GetDurationMinutes() * 60;
+            if (!midSession) remaining = Store.GetDurationMinutes(currentUser) * 60;
 
             // 托盘图标
             tray = new NotifyIcon();
@@ -81,7 +83,8 @@ namespace PCLock
             // 上次是被硬断电打断的会话且时长已被扣光，同样开机即锁
             bool lockOnBoot = false;
             if (midSession && Store.GetLockFlag() != 1) lockOnBoot = DeductOffline();
-            if (Store.GetLockFlag() == 1 || lockOnBoot) LockNow();
+            if (Store.GetLockFlag() == 1) LockNow(!Store.IsWithinWindow(currentUser));
+            else if (lockOnBoot) LockNow(false);
         }
 
         /// <summary>
@@ -156,12 +159,18 @@ namespace PCLock
         {
             if (stopping || lockForm != null) return;   // 锁屏/退出中不计时（避免退出过程中再次触发 LockNow）
             if (paused) { tray.Text = "电脑锁 - 已暂停"; return; }
+            // 每日时段：不在允许时段内则强制锁屏（硬锁），且不计时、不扣时长（家长暂停时例外，已在上行处理）
+            if (!Store.IsWithinWindow(currentUser))
+            {
+                if (lockForm == null) LockNow(true);
+                return;
+            }
             remaining--;
-            Store.AddUsedSeconds(1);                     // 统计今日已用（仅解锁使用期间）
+            Store.AddUsedSeconds(currentUser, 1);        // 统计今日已用（仅解锁使用期间、按用户）
             // 用范围判断而非精确相等，避免 Timer 精度漂移跳过提醒
             if (!warned5 && remaining <= Constants.Warn5MinSec) { Warn("电脑还剩 5 分钟使用时间"); warned5 = true; }
             if (!warned1 && remaining <= Constants.Warn1MinSec) { Warn("电脑还剩 1 分钟使用时间"); warned1 = true; }
-            if (remaining <= 0) { LockNow(); return; }
+            if (remaining <= 0) { LockNow(false); return; }
             if (remaining % Constants.PersistIntervalSec == 0)
             {
                 Store.SetRemaining(remaining);
@@ -189,17 +198,32 @@ namespace PCLock
             catch (Exception) { }
         }
 
-        /// <summary>进入锁屏（到时锁定 / 开机带锁标记 / 手动锁定都走这里）</summary>
+        /// <summary>进入锁屏（到时锁定 / 开机带锁标记 / 手动锁定都走这里）。默认按当前时段状态判定原因。</summary>
         public void LockNow()
+        {
+            LockNow(!Store.IsWithinWindow(currentUser));
+        }
+
+        /// <summary>
+        /// 进入锁屏。dueToWindow=true 表示因"不在每日可用时段"而锁：
+        /// 硬锁——禁用答题，仅家长 PIN 或时段开始可解，且期间不计时不扣时长。
+        /// </summary>
+        public void LockNow(bool dueToWindow)
         {
             if (lockForm != null) return;
             Store.SetLockFlag(1);                     // 持久化：重启后仍处于锁定
             Protection.SetTaskMgrDisabled(true);      // 锁屏期间禁用任务管理器
-            lockForm = new LockForm();
+            lockForm = new LockForm(dueToWindow);
             lockForm.UnlockRequested += delegate { Unlock(); };
             lockForm.Show();
             lockForm.Activate();
         }
+
+        /// <summary>当前登录用户（供锁屏界面判断时段）</summary>
+        public string CurrentUser { get { return currentUser; } }
+
+        /// <summary>当前用户是否处于允许使用时段内</summary>
+        public bool IsWithinWindow() { return Store.IsWithinWindow(currentUser); }
 
         /// <summary>解锁（答对题或家长PIN成功后调用）。解锁即开始新一轮计时。</summary>
         public void Unlock()
@@ -211,7 +235,7 @@ namespace PCLock
                 lockForm = null;
             }
             Store.SetLockFlag(0);
-            remaining = Store.GetDurationMinutes() * 60;
+            remaining = Store.GetDurationMinutes(currentUser) * 60;
             Store.SetRemaining(remaining);
             Store.SetLastSeenUtc(DateTime.UtcNow.Ticks);   // 新会话从现在起算
             warned5 = warned1 = false;                     // 重置提醒标志
@@ -221,7 +245,7 @@ namespace PCLock
 
         public void ResetRemaining()
         {
-            remaining = Store.GetDurationMinutes() * 60;
+            remaining = Store.GetDurationMinutes(currentUser) * 60;
             Store.SetRemaining(remaining);
             Store.SetLastSeenUtc(DateTime.UtcNow.Ticks);
             warned5 = warned1 = false;                     // 重置提醒标志
@@ -385,7 +409,7 @@ namespace PCLock
                 {
                     // 与退出确认框语义一致："下次开机自动重新开始"——
                     // 重置为完整时长，并清掉断电折算时间戳，下次开机不扣离线时长
-                    remaining = Store.GetDurationMinutes() * 60;
+                    remaining = Store.GetDurationMinutes(currentUser) * 60;
                     Store.SetRemaining(remaining);
                     Store.SetLastSeenUtc(0);
                 }

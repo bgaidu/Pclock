@@ -106,16 +106,31 @@ namespace PCLock
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ShowInTaskbar = false;
-            ClientSize = new Size(470, 560);
+            ClientSize = new Size(470, 700);
 
-            // ---- 使用时长 ----
+            // ---- 配置对象（按 Windows 用户分别限制）----
+            GroupBox guUser = new GroupBox();
+            guUser.Text = "配置对象（Windows 用户）";
+            guUser.Location = new Point(15, 15);
+            guUser.Size = new Size(440, 55);
+            Label ulbl = NewLbl("为以下用户设置：", 15, 22);
+            guUser.Controls.Add(ulbl);
+            ComboBox cbUser = new ComboBox();
+            cbUser.Location = new Point(150, 20);
+            cbUser.Size = new Size(200, 24);
+            cbUser.DropDownStyle = ComboBoxStyle.DropDownList;
+            cbUser.Items.AddRange(Store.ListUsers());
+            cbUser.SelectedIndex = 0;
+            guUser.Controls.Add(cbUser);
+            Controls.Add(guUser);
+
+            // ---- 使用时长（按用户分别）----
             GroupBox gb = new GroupBox();
-            gb.Text = "每次可用时长";
-            gb.Location = new Point(15, 15);
+            gb.Text = "每次可用时长（按用户）";
+            gb.Location = new Point(15, 80);
             gb.Size = new Size(440, 90);
             int[] mins = Constants.AllowedDurations;
             RadioButton[] rbs = new RadioButton[mins.Length];
-            int cur = Store.GetDurationMinutes();
             for (int i = 0; i < mins.Length; i++)
             {
                 rbs[i] = new RadioButton();
@@ -123,7 +138,6 @@ namespace PCLock
                 rbs[i].AutoSize = true;
                 rbs[i].Location = new Point(15 + i * 70, 25);
                 rbs[i].Tag = mins[i];
-                if (mins[i] == cur) rbs[i].Checked = true;
                 gb.Controls.Add(rbs[i]);
             }
             Controls.Add(gb);
@@ -139,20 +153,29 @@ namespace PCLock
                 {
                     if (rbRef[i].Checked)
                     {
-                        Store.SetDurationMinutes((int)rbRef[i].Tag);
-                        App.Instance.ResetRemaining();
-                        MessageBox.Show(this, "已保存。本次剩余时间已重置。", "电脑锁",
-                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        string u = cbUser.Text;
+                        Store.SetDurationMinutes(u, (int)rbRef[i].Tag);
+                        if (u == Store.GetCurrentUser())
+                        {
+                            App.Instance.ResetRemaining();
+                            MessageBox.Show(this, "已保存。本次剩余时间已重置。", "电脑锁",
+                                MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
+                        else
+                        {
+                            MessageBox.Show(this, "已为「" + u + "」保存。下次该用户登录时生效。", "电脑锁",
+                                MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
                         break;
                     }
                 }
             };
             gb.Controls.Add(saveDur);
 
-            // ---- 锁屏答题：年级 / 学科 ----
+            // ---- 锁屏答题：年级 / 学科（全局共用）----
             GroupBox gq = new GroupBox();
-            gq.Text = "锁屏答题（年级 / 学科）";
-            gq.Location = new Point(15, 115);
+            gq.Text = "锁屏答题（年级 / 学科，全局共用）";
+            gq.Location = new Point(15, 180);
             gq.Size = new Size(440, 110);
             Controls.Add(gq);
 
@@ -194,10 +217,34 @@ namespace PCLock
             };
             gq.Controls.Add(saveEdu);
 
+            // ---- 每日可用时段（按用户分别）----
+            GroupBox gw = new GroupBox();
+            gw.Text = "每日可用时段（按用户）";
+            gw.Location = new Point(15, 300);
+            gw.Size = new Size(440, 100);
+            Label wtip = NewLbl("格式：08:00-12:00;14:00-21:00（分号分隔多段，留空=全天可用）", 15, 22);
+            gw.Controls.Add(wtip);
+            TextBox txtWin = new TextBox();
+            txtWin.Location = new Point(15, 48);
+            txtWin.Size = new Size(410, 24);
+            gw.Controls.Add(txtWin);
+            Button saveWin = new Button();
+            saveWin.Text = "保存时段";
+            saveWin.Location = new Point(325, 74);
+            saveWin.Size = new Size(105, 28);
+            saveWin.Click += delegate
+            {
+                Store.SetWindow(cbUser.Text, txtWin.Text.Trim());
+                MessageBox.Show(this, "已为「" + cbUser.Text + "」保存可用时段。", "电脑锁",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            };
+            gw.Controls.Add(saveWin);
+            Controls.Add(gw);
+
             // ---- 修改家长 PIN ----
             GroupBox gp = new GroupBox();
             gp.Text = "修改家长 PIN（锁屏界面\"家长入口\"用）";
-            gp.Location = new Point(15, 240);
+            gp.Location = new Point(15, 410);
             gp.Size = new Size(440, 90);
             TextBox pin1 = NewBox(90, 26);
             TextBox pin2 = NewBox(300, 26);
@@ -235,7 +282,7 @@ namespace PCLock
             // ---- 修改卸载密码 ----
             GroupBox gu = new GroupBox();
             gu.Text = "修改卸载密码（卸载本程序时必须输入）";
-            gu.Location = new Point(15, 345);
+            gu.Location = new Point(15, 510);
             gu.Size = new Size(440, 90);
             TextBox up1 = NewBox(90, 26);
             TextBox up2 = NewBox(300, 26);
@@ -270,13 +317,13 @@ namespace PCLock
             gu.Controls.Add(btnUn);
             Controls.Add(gu);
 
-            // ---- 临时加时 / 暂停（本次会话；进入本窗口即家长操作）----
-            Label lblUsed = NewLbl("今日已用：计算中…", 15, 446);
+            // ---- 临时加时 / 暂停 + 今日已用（按用户）----
+            Label lblUsed = NewLbl("今日已用：计算中…", 15, 618);
             lblUsed.ForeColor = Color.Gray;
             Controls.Add(lblUsed);
             Button btnPause = new Button();
             btnPause.Text = "暂停计时";
-            btnPause.Location = new Point(185, 442);
+            btnPause.Location = new Point(185, 612);
             btnPause.Size = new Size(130, 34);
             btnPause.Click += delegate
             {
@@ -288,7 +335,7 @@ namespace PCLock
             };
             Button btnAdd = new Button();
             btnAdd.Text = "本次 +15 分钟";
-            btnAdd.Location = new Point(320, 442);
+            btnAdd.Location = new Point(320, 612);
             btnAdd.Size = new Size(130, 34);
             btnAdd.Click += delegate
             {
@@ -298,13 +345,24 @@ namespace PCLock
             };
             Controls.Add(btnPause);
             Controls.Add(btnAdd);
-            int used = Store.GetUsedToday();
-            lblUsed.Text = "今日已用：" + (used / 60) + " 分 " + (used % 60) + " 秒";
+
+            // ---- 切换用户时刷新时长/时段/已用 ----
+            Action RefreshUser = delegate
+            {
+                string u = cbUser.Text;
+                int dur = Store.GetDurationMinutes(u);
+                for (int i = 0; i < rbs.Length; i++) rbs[i].Checked = ((int)rbs[i].Tag == dur);
+                txtWin.Text = Store.GetWindow(u);
+                int used = Store.GetUsedToday(u);
+                lblUsed.Text = "「" + u + "」今日已用：" + (used / 60) + " 分 " + (used % 60) + " 秒";
+            };
+            cbUser.SelectedIndexChanged += delegate { RefreshUser(); };
+            RefreshUser();
 
             // ---- 操作按钮 ----
             Button btnLock = new Button();
             btnLock.Text = "立即锁定";
-            btnLock.Location = new Point(15, 486);
+            btnLock.Location = new Point(15, 655);
             btnLock.Size = new Size(140, 34);
             btnLock.Click += delegate
             {
@@ -314,7 +372,7 @@ namespace PCLock
 
             Button btnExit = new Button();
             btnExit.Text = "退出程序";
-            btnExit.Location = new Point(165, 486);
+            btnExit.Location = new Point(165, 655);
             btnExit.Size = new Size(140, 34);
             btnExit.Click += delegate
             {
@@ -329,7 +387,7 @@ namespace PCLock
 
             Button btnRemove = new Button();
             btnRemove.Text = "卸载并删除程序";
-            btnRemove.Location = new Point(315, 486);
+            btnRemove.Location = new Point(315, 655);
             btnRemove.Size = new Size(140, 34);
             btnRemove.Click += delegate
             {
@@ -357,7 +415,7 @@ namespace PCLock
                 " 道题（数学填答案，语文/英语四选一，答错清零重来），或由家长输入 PIN 解锁。";
             tip.ForeColor = Color.Gray;
             tip.AutoSize = true;
-            tip.Location = new Point(15, 530);
+            tip.Location = new Point(15, 665);
             Controls.Add(tip);
         }
 
