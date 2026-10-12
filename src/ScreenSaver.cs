@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.IO;
+using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
@@ -95,6 +96,25 @@ namespace PCLock
         /// <summary>/s 模式：全屏锁屏，解锁即退出（符合屏保进程语义）。</summary>
         public static void RunSaver()
         {
+            // 主程序（PCLock.exe 主实例）已在运行时，把"锁屏"交给主程序统一处理，
+            // 避免"系统屏保空闲触发"与"主程序时长到点锁屏"产生两个独立的锁屏窗口/连环弹锁。
+            bool mainRunning = false;
+            try { Mutex.OpenExisting(Constants.MutexName); mainRunning = true; }
+            catch (WaitHandleCannotBeOpenedException) { mainRunning = false; }
+            catch (Exception) { mainRunning = false; }
+
+            if (mainRunning)
+            {
+                try
+                {
+                    using (EventWaitHandle h = new EventWaitHandle(false, EventResetMode.AutoReset, Constants.ScreenSaverLockRequestName))
+                        h.Set();
+                }
+                catch (Exception ex) { Program.Log("ScreenSaver.SignalLockRequest failed: " + ex.Message); }
+                return;
+            }
+
+            // 主程序未运行：本进程独立承担锁屏（纯屏保语义，解锁即退出）
             LockForm lf = new LockForm(false);
             lf.UnlockRequested += (s, e) =>
             {

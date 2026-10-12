@@ -26,6 +26,9 @@ namespace PCLock
         bool paused;            // 家长临时暂停计时（孩子仍可用，但不再倒计时）
         Thread guardThread;
         EventWaitHandle stopEvent; // 供看门狗监听的停止事件
+        EventWaitHandle ssLockEvent; // 屏保空闲锁屏请求事件（屏保进程→主程序）
+        Thread ssLockThread;       // 监听上述事件的线程
+        Control syncControl;       // 用于把屏保请求封送到 UI 线程的隐藏控件
 
         public App()
         {
@@ -82,6 +85,20 @@ namespace PCLock
             guardThread = new Thread(GuardLoop);
             guardThread.IsBackground = true;
             guardThread.Start();
+
+            // 屏保空闲锁屏请求监听：系统屏保（PCLock.scr /s）触发时，若主程序在运行，
+            // 屏保进程会设置该事件；本线程收到后在 UI 线程调用 LockNow，
+            // 统一由主程序锁屏，避免与"时长到点"锁屏重叠。
+            try
+            {
+                syncControl = new Control();
+                syncControl.CreateControl();
+                ssLockEvent = new EventWaitHandle(false, EventResetMode.AutoReset, Constants.ScreenSaverLockRequestName);
+                ssLockThread = new Thread(SSLockLoop);
+                ssLockThread.IsBackground = true;
+                ssLockThread.Start();
+            }
+            catch (Exception ex) { Program.Log("SSLock init failed: " + ex.Message); }
 
             // 重启仍锁：注册表里有锁屏标记，开机后立刻锁屏；
             // 上次是被硬断电打断的会话且时长已被扣光，同样开机即锁
@@ -308,6 +325,32 @@ namespace PCLock
             }
         }
 
+        /// <summary>
+        /// 监听系统屏保空闲锁屏请求：屏保进程触发时本线程收到事件，
+        /// 在 UI 线程调用 LockNow，统一由主程序锁屏，避免与"时长到点"锁屏重叠。
+        /// </summary>
+        void SSLockLoop()
+        {
+            while (!stopping)
+            {
+                if (ssLockEvent == null) break;
+                if (ssLockEvent.WaitOne(500))
+                {
+                    try
+                    {
+                        if (syncControl != null)
+                            syncControl.BeginInvoke(new Action(delegate
+                            {
+                                // 已在锁屏则跳过，避免重复；否则按"空闲锁屏"处理（可答题解锁）
+                                if (lockForm == null) LockNow(false);
+                            }), null);
+                    }
+                    catch (Exception ex) { Program.Log("SSLockLoop dispatch failed: " + ex.Message); }
+                }
+                if (stopping) break;
+            }
+        }
+
         public void ShowSettings()
         {
             bool ok = false;
@@ -474,10 +517,15 @@ namespace PCLock
             }
 
             Protection.UnprotectSelf();
-            // 释放停止事件
+            // 释放停止事件与屏保锁屏请求事件
             if (stopEvent != null)
             {
                 try { stopEvent.Close(); }
+                catch { }
+            }
+            if (ssLockEvent != null)
+            {
+                try { ssLockEvent.Close(); }
                 catch { }
             }
             Environment.Exit(0);
