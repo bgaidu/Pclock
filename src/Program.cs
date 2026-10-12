@@ -140,6 +140,36 @@ namespace PCLock
                 return;
             }
 
+            // 屏保协议分派：/s 运行 /c 配置 /p 预览（独立于常驻进程，不抢互斥锁）
+            if (args.Length > 0)
+            {
+                string a0 = args[0].ToLowerInvariant();
+                if (a0 == "/s" || a0 == "-s")
+                {
+                    SetDpiAwareness();
+                    Application.EnableVisualStyles();
+                    Application.SetCompatibleTextRenderingDefault(false);
+                    ScreenSaver.RunSaver();
+                    return;
+                }
+                if (a0 == "/c" || a0 == "-c")
+                {
+                    SetDpiAwareness();
+                    Application.EnableVisualStyles();
+                    Application.SetCompatibleTextRenderingDefault(false);
+                    ScreenSaver.RunConfig();
+                    return;
+                }
+                if (a0 == "/p" || a0 == "-p")
+                {
+                    SetDpiAwareness();
+                    Application.EnableVisualStyles();
+                    Application.SetCompatibleTextRenderingDefault(false);
+                    ScreenSaver.RunPreview(args);
+                    return;
+                }
+            }
+
             // 单实例
             bool createdNew = false;
             Mutex m = null;

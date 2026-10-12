@@ -157,7 +157,7 @@ namespace PCLock
                         Store.SetDurationMinutes(u, (int)rbRef[i].Tag);
                         if (u == Store.GetCurrentUser())
                         {
-                            App.Instance.ResetRemaining();
+                            if (App.Instance != null) App.Instance.ResetRemaining();
                             MessageBox.Show(this, "已保存。本次剩余时间已重置。", "电脑锁",
                                 MessageBoxButtons.OK, MessageBoxIcon.Information);
                         }
@@ -317,16 +317,39 @@ namespace PCLock
             gu.Controls.Add(btnUn);
             Controls.Add(gu);
 
+            // ---- 系统屏保（空闲自动锁屏）----
+            GroupBox guSS = new GroupBox();
+            guSS.Text = "系统屏保（空闲自动锁屏）";
+            guSS.Location = new Point(15, 600);
+            guSS.Size = new Size(440, 52);
+            Button btnSS = new Button();
+            btnSS.Location = new Point(300, 18);
+            btnSS.Size = new Size(125, 28);
+            btnSS.Text = ScreenSaver.IsRegistered() ? "取消系统屏保" : "设为系统屏保";
+            btnSS.Click += delegate
+            {
+                bool ok = ScreenSaver.IsRegistered() ? ScreenSaver.Unregister() : ScreenSaver.Register();
+                if (!ok) MessageBox.Show(this, "操作失败，请检查目录写权限或已有其他屏保占用。", "电脑锁");
+                else btnSS.Text = ScreenSaver.IsRegistered() ? "取消系统屏保" : "设为系统屏保";
+            };
+            guSS.Controls.Add(btnSS);
+            Controls.Add(guSS);
+
             // ---- 临时加时 / 暂停 + 今日已用（按用户）----
-            Label lblUsed = NewLbl("今日已用：计算中…", 15, 618);
+            Label lblUsed = NewLbl("今日已用：计算中…", 15, 18);
             lblUsed.ForeColor = Color.Gray;
-            Controls.Add(lblUsed);
+            guSS.Controls.Add(lblUsed);
             Button btnPause = new Button();
             btnPause.Text = "暂停计时";
             btnPause.Location = new Point(185, 612);
             btnPause.Size = new Size(130, 34);
             btnPause.Click += delegate
             {
+                if (App.Instance == null)
+                {
+                    MessageBox.Show(this, "请先启动电脑锁主程序后再操作。", "电脑锁");
+                    return;
+                }
                 App.Instance.SetPaused(!App.Instance.IsPaused());
                 btnPause.Text = App.Instance.IsPaused() ? "继续计时" : "暂停计时";
                 MessageBox.Show(this, App.Instance.IsPaused()
@@ -339,6 +362,11 @@ namespace PCLock
             btnAdd.Size = new Size(130, 34);
             btnAdd.Click += delegate
             {
+                if (App.Instance == null)
+                {
+                    MessageBox.Show(this, "请先启动电脑锁主程序后再操作。", "电脑锁");
+                    return;
+                }
                 App.Instance.AddTime(15);
                 MessageBox.Show(this, "已为本次会话增加 15 分钟使用时间。", "电脑锁",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -366,6 +394,11 @@ namespace PCLock
             btnLock.Size = new Size(140, 34);
             btnLock.Click += delegate
             {
+                if (App.Instance == null)
+                {
+                    MessageBox.Show(this, "请先启动电脑锁主程序后再锁定。", "电脑锁");
+                    return;
+                }
                 Close();
                 App.Instance.LockNow();
             };
@@ -376,6 +409,11 @@ namespace PCLock
             btnExit.Size = new Size(140, 34);
             btnExit.Click += delegate
             {
+                if (App.Instance == null)
+                {
+                    MessageBox.Show(this, "主程序未运行，无需退出。", "电脑锁");
+                    return;
+                }
                 if (MessageBox.Show(this,
                     "确定退出电脑锁？退出后本次不再计时，下次开机自动重新开始。",
                     "电脑锁", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
@@ -391,6 +429,11 @@ namespace PCLock
             btnRemove.Size = new Size(140, 34);
             btnRemove.Click += delegate
             {
+                if (App.Instance == null)
+                {
+                    MessageBox.Show(this, "请先启动电脑锁主程序后再卸载。", "电脑锁");
+                    return;
+                }
                 if (MessageBox.Show(this,
                     "确定卸载并删除电脑锁的全部文件和设置吗？",
                     "电脑锁", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
