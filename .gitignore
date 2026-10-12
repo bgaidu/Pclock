@@ -13,3 +13,7 @@ _t.cs
 
 # 主程序编译产物（由 build.bat / VS 生成）
 PCLock.exe
+
+# build.bat 输出目录（Debug/Release 为构建产物，不纳入版本控制）
+Debug/
+Release/
