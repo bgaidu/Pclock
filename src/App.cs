@@ -254,7 +254,7 @@ namespace PCLock
             if (lockForm != null)
             {
                 lockForm.AllowClose = true;
-                lockForm.Close();
+                lockForm.Dispose();
                 lockForm = null;
             }
             Store.SetLockFlag(0);
@@ -424,7 +424,7 @@ namespace PCLock
                 if (lockForm != null)
                 {
                     lockForm.AllowClose = true;
-                    lockForm.Close();
+                    lockForm.Dispose();
                     lockForm = null;
                 }
                 Store.SetLockFlag(0);

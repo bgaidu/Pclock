@@ -99,18 +99,36 @@ namespace PCLock
             catch { }
         }
 
+        [DllImport("user32.dll")]
+        static extern int GetGuiResources(IntPtr hProcess, int uiFlags);
+
         static void OnThreadException(object sender, ThreadExceptionEventArgs e)
         {
             Exception ex = e.Exception;
 
-            // 绘制期偶发的"创建窗口句柄"失败（Win32Exception 0x80004005）：
-            // 多为窗口开关/重绘竞态或系统资源瞬时紧张，已被此兜底捕获、程序可继续运行。
-            // 对此类异常完全静默（不写 err.txt、不弹框），避免 err.txt 出现误导性的"错误日志"。
+            // 附带诊断上下文：当前活动窗体 + 进程 USER/GDI 对象数（用于判断是否句柄泄漏/定位窗口）
+            string diag = "";
+            try
+            {
+                Form af = Form.ActiveForm;
+                diag = "ActiveForm=" + (af != null ? af.GetType().Name : "null");
+                using (System.Diagnostics.Process proc = System.Diagnostics.Process.GetCurrentProcess())
+                {
+                    int userObj = GetGuiResources(proc.Handle, 1);   // GR_USEROBJECTS
+                    int gdiObj = GetGuiResources(proc.Handle, 0);    // GR_GDIOBJECTS
+                    diag += " USERObj=" + userObj + " GDIObj=" + gdiObj;
+                }
+            }
+            catch { }
+
+            Log("UI THREAD EXCEPTION:\n" + ex + "\n[diag] " + diag);
+
+            // 绘制期"创建窗口句柄"失败（Win32Exception 0x80004005）：已被兜底、程序可继续，
+            // 记录诊断但不弹框；其它异常弹框提示。
             System.ComponentModel.Win32Exception wex = ex as System.ComponentModel.Win32Exception;
             if (wex != null && ex.Message != null && ex.Message.Contains("创建窗口句柄"))
                 return;
 
-            Log("UI THREAD EXCEPTION:\n" + ex);
             try
             {
                 MessageBox.Show("PCLock 出错：\n\n" + ex.Message +
