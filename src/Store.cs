@@ -193,10 +193,14 @@ namespace PCLock
         public static bool IsWithinWindow() { return IsWithinWindow(GetCurrentUser()); }
         public static bool IsWithinWindow(string user)
         {
-            string w = GetWindow(user);
-            if (string.IsNullOrWhiteSpace(w)) return true;
-            TimeSpan now = DateTime.Now.TimeOfDay;
-            foreach (string raw in w.Split(new char[] { ';', ',', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries))
+            return IsWithinWindow(GetWindow(user), DateTime.Now.TimeOfDay);
+        }
+
+        /// <summary>纯函数版（不读注册表，便于单元测试）：判断 now 是否落在 windowSpec 任意段内</summary>
+        public static bool IsWithinWindow(string windowSpec, TimeSpan now)
+        {
+            if (string.IsNullOrWhiteSpace(windowSpec)) return true;
+            foreach (string raw in windowSpec.Split(new char[] { ';', ',', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries))
             {
                 string seg = raw.Trim();
                 if (seg.Length == 0) continue;
