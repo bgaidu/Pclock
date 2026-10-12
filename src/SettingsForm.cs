@@ -107,7 +107,7 @@ namespace PCLock
             StartPosition = FormStartPosition.CenterParent;
             ShowInTaskbar = false;
             AutoScroll = true;
-            ClientSize = new Size(500, 600);
+            ClientSize = new Size(480, 600);
             this.Icon = Program.LoadAppIcon();
 
             // 顶部菜单：关于
