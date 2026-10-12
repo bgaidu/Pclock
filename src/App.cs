@@ -21,6 +21,7 @@ namespace PCLock
         int remaining;          // 剩余秒数
         bool stopping;
         bool warned5, warned1; // 本轮是否已弹过 5 分钟 / 1 分钟提醒
+        bool paused;            // 家长临时暂停计时（孩子仍可用，但不再倒计时）
         Thread guardThread;
         EventWaitHandle stopEvent; // 供看门狗监听的停止事件
 
@@ -154,7 +155,9 @@ namespace PCLock
         void OnTick(object sender, EventArgs e)
         {
             if (stopping || lockForm != null) return;   // 锁屏/退出中不计时（避免退出过程中再次触发 LockNow）
+            if (paused) { tray.Text = "电脑锁 - 已暂停"; return; }
             remaining--;
+            Store.AddUsedSeconds(1);                     // 统计今日已用（仅解锁使用期间）
             // 用范围判断而非精确相等，避免 Timer 精度漂移跳过提醒
             if (!warned5 && remaining <= Constants.Warn5MinSec) { Warn("电脑还剩 5 分钟使用时间"); warned5 = true; }
             if (!warned1 && remaining <= Constants.Warn1MinSec) { Warn("电脑还剩 1 分钟使用时间"); warned1 = true; }
@@ -213,6 +216,7 @@ namespace PCLock
             Store.SetLastSeenUtc(DateTime.UtcNow.Ticks);   // 新会话从现在起算
             warned5 = warned1 = false;                     // 重置提醒标志
             Protection.SetTaskMgrDisabled(false);
+            paused = false;                                // 新会话恢复计时
         }
 
         public void ResetRemaining()
@@ -221,6 +225,19 @@ namespace PCLock
             Store.SetRemaining(remaining);
             Store.SetLastSeenUtc(DateTime.UtcNow.Ticks);
             warned5 = warned1 = false;                     // 重置提醒标志
+            paused = false;                                // 恢复计时
+        }
+
+        /// <summary>家长临时暂停/继续计时（暂停时孩子仍可使用电脑，但剩余时间不再递减）</summary>
+        public void SetPaused(bool p) { paused = p; }
+        public bool IsPaused() { return paused; }
+
+        /// <summary>家长为本次会话临时增加使用时间（分钟）</summary>
+        public void AddTime(int minutes)
+        {
+            remaining += minutes * 60;
+            if (remaining < 0) remaining = 0;
+            Store.SetRemaining(remaining);
         }
 
         /// <summary>守护线程：看门狗进程被杀 → 重新拉起；锁屏期间持续确保任务管理器被禁用</summary>

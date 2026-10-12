@@ -119,6 +119,26 @@ namespace PCLock
         public static int GetRemaining() { return GetInt("RemainingSeconds", -1); }
         public static void SetRemaining(int sec) { SetInt("RemainingSeconds", sec); }
 
+        /// <summary>今日已用秒数（按本地日期区分；跨天自动视为 0）</summary>
+        public static int GetUsedToday()
+        {
+            if (GetStr("UsedDate", "") != DateTime.Now.ToString("yyyy-MM-dd")) return 0;
+            return GetInt("UsedSeconds", 0);
+        }
+
+        /// <summary>累加今日已用秒数；跨天自动重置再累加</summary>
+        public static void AddUsedSeconds(int sec)
+        {
+            if (sec <= 0) return;
+            string today = DateTime.Now.ToString("yyyy-MM-dd");
+            if (GetStr("UsedDate", "") != today)
+            {
+                SetStr("UsedDate", today);
+                SetInt("UsedSeconds", 0);
+            }
+            SetInt("UsedSeconds", GetInt("UsedSeconds", 0) + sec);
+        }
+
         /// <summary>
         /// 上次写剩余时间时的 UTC 时间戳（.NET Ticks，0 = 无有效时间戳）。
         /// 用于硬断电后折算扣除离线时长，防止断电"冻结"倒计时。

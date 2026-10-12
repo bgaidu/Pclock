@@ -270,10 +270,41 @@ namespace PCLock
             gu.Controls.Add(btnUn);
             Controls.Add(gu);
 
+            // ---- 临时加时 / 暂停（本次会话；进入本窗口即家长操作）----
+            Label lblUsed = NewLbl("今日已用：计算中…", 15, 446);
+            lblUsed.ForeColor = Color.Gray;
+            Controls.Add(lblUsed);
+            Button btnPause = new Button();
+            btnPause.Text = "暂停计时";
+            btnPause.Location = new Point(185, 442);
+            btnPause.Size = new Size(130, 34);
+            btnPause.Click += delegate
+            {
+                App.Instance.SetPaused(!App.Instance.IsPaused());
+                btnPause.Text = App.Instance.IsPaused() ? "继续计时" : "暂停计时";
+                MessageBox.Show(this, App.Instance.IsPaused()
+                    ? "已暂停计时：孩子仍可使用电脑，但剩余时间不再减少。"
+                    : "已继续计时。", "电脑锁", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            };
+            Button btnAdd = new Button();
+            btnAdd.Text = "本次 +15 分钟";
+            btnAdd.Location = new Point(320, 442);
+            btnAdd.Size = new Size(130, 34);
+            btnAdd.Click += delegate
+            {
+                App.Instance.AddTime(15);
+                MessageBox.Show(this, "已为本次会话增加 15 分钟使用时间。", "电脑锁",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            };
+            Controls.Add(btnPause);
+            Controls.Add(btnAdd);
+            int used = Store.GetUsedToday();
+            lblUsed.Text = "今日已用：" + (used / 60) + " 分 " + (used % 60) + " 秒";
+
             // ---- 操作按钮 ----
             Button btnLock = new Button();
             btnLock.Text = "立即锁定";
-            btnLock.Location = new Point(15, 450);
+            btnLock.Location = new Point(15, 486);
             btnLock.Size = new Size(140, 34);
             btnLock.Click += delegate
             {
@@ -283,7 +314,7 @@ namespace PCLock
 
             Button btnExit = new Button();
             btnExit.Text = "退出程序";
-            btnExit.Location = new Point(165, 450);
+            btnExit.Location = new Point(165, 486);
             btnExit.Size = new Size(140, 34);
             btnExit.Click += delegate
             {
@@ -298,7 +329,7 @@ namespace PCLock
 
             Button btnRemove = new Button();
             btnRemove.Text = "卸载并删除程序";
-            btnRemove.Location = new Point(315, 450);
+            btnRemove.Location = new Point(315, 486);
             btnRemove.Size = new Size(140, 34);
             btnRemove.Click += delegate
             {
@@ -326,7 +357,7 @@ namespace PCLock
                 " 道题（数学填答案，语文/英语四选一，答错清零重来），或由家长输入 PIN 解锁。";
             tip.ForeColor = Color.Gray;
             tip.AutoSize = true;
-            tip.Location = new Point(15, 495);
+            tip.Location = new Point(15, 530);
             Controls.Add(tip);
         }
 
