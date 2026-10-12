@@ -205,7 +205,16 @@ namespace PCLock
             meaningLabel.Top = questionLabel.Bottom + 14;
 
             int bottomOfInput;
-            if (answerBox.Visible)
+            // 注意：不能用 answerBox.Visible 判断分支——首题在构造函数里布局，此时窗体尚未 Show，
+            // WinForms 中子控件 Visible 恒返回 false，会导致第一题（数学）的答题框停留在默认 (0,0)。
+            // 因此按"当前题目类型"判断，而不是控件可见性。
+            bool mathMode = false, pinyinMode = false;
+            if (questions != null && qIndex < questions.Count)
+            {
+                mathMode = (questions[qIndex].Type == QType.MathCalc);
+                pinyinMode = (questions[qIndex].Type == QType.ChinesePinyin);
+            }
+            if (mathMode)
             {
                 answerBox.Left = cx - 160;
                 answerBox.Top = questionLabel.Bottom + 55;
@@ -215,7 +224,7 @@ namespace PCLock
             }
             else
             {
-                int mTop = questionLabel.Bottom + (meaningLabel.Visible ? meaningLabel.Height + 24 : 28);
+                int mTop = questionLabel.Bottom + (pinyinMode ? meaningLabel.Height + 24 : 28);
                 for (int i = 0; i < 4; i++)
                 {
                     optBtns[i].Left = cx - optBtns[i].Width / 2;
@@ -441,6 +450,7 @@ namespace PCLock
             base.OnShown(e);
             TopMost = true;
             Activate();
+            LayoutControls();   // 显示后（句柄/字体度量就绪）再重排一次，保证首题位置准确
             if (!dueToWindow) answerBox.Focus();
         }
 
