@@ -16,7 +16,7 @@ namespace PCLock
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
-            StartPosition = FormStartPosition.CenterParent;
+            StartPosition = FormStartPosition.CenterScreen;
             ShowInTaskbar = false;
             ClientSize = new Size(330, 135);
 
@@ -319,14 +319,17 @@ namespace PCLock
             gu.Controls.Add(btnUn);
             Controls.Add(gu);
 
-            // ---- 临时加时 / 暂停 + 今日已用（按用户）----
-            Label lblUsed = NewLbl("今日已用：计算中…", 15, 560);
+            // ---- 本次会话：今日已用 / 暂停 / 加时（按用户）----
+            GroupBox guOps = new GroupBox();
+            guOps.Text = "本次会话（今日已用 / 暂停 / 加时）";
+            guOps.Location = new Point(15, 610);
+            guOps.Size = new Size(440, 78);
+            Label lblUsed = NewLbl("今日已用：计算中…", 12, 20);
             lblUsed.ForeColor = Color.Gray;
-            Controls.Add(lblUsed);
             Button btnPause = new Button();
             btnPause.Text = "暂停计时";
-            btnPause.Location = new Point(185, 612);
-            btnPause.Size = new Size(130, 34);
+            btnPause.Location = new Point(12, 44);
+            btnPause.Size = new Size(200, 28);
             btnPause.Click += delegate
             {
                 if (App.Instance == null)
@@ -342,8 +345,8 @@ namespace PCLock
             };
             Button btnAdd = new Button();
             btnAdd.Text = "本次 +15 分钟";
-            btnAdd.Location = new Point(320, 612);
-            btnAdd.Size = new Size(130, 34);
+            btnAdd.Location = new Point(228, 44);
+            btnAdd.Size = new Size(200, 28);
             btnAdd.Click += delegate
             {
                 if (App.Instance == null)
@@ -355,8 +358,10 @@ namespace PCLock
                 MessageBox.Show(this, "已为本次会话增加 15 分钟使用时间。", "电脑锁",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             };
-            Controls.Add(btnPause);
-            Controls.Add(btnAdd);
+            guOps.Controls.Add(lblUsed);
+            guOps.Controls.Add(btnPause);
+            guOps.Controls.Add(btnAdd);
+            Controls.Add(guOps);
 
             // ---- 切换用户时刷新时长/时段/已用 ----
             Action RefreshUser = delegate
@@ -374,7 +379,7 @@ namespace PCLock
             // ---- 操作按钮 ----
             Button btnLock = new Button();
             btnLock.Text = "立即锁定";
-            btnLock.Location = new Point(15, 655);
+            btnLock.Location = new Point(15, 705);
             btnLock.Size = new Size(140, 34);
             btnLock.Click += delegate
             {
@@ -389,7 +394,7 @@ namespace PCLock
 
             Button btnExit = new Button();
             btnExit.Text = "退出程序";
-            btnExit.Location = new Point(165, 655);
+            btnExit.Location = new Point(165, 705);
             btnExit.Size = new Size(140, 34);
             btnExit.Click += delegate
             {
@@ -409,7 +414,7 @@ namespace PCLock
 
             Button btnRemove = new Button();
             btnRemove.Text = "卸载并删除程序";
-            btnRemove.Location = new Point(315, 655);
+            btnRemove.Location = new Point(315, 705);
             btnRemove.Size = new Size(140, 34);
             btnRemove.Click += delegate
             {
@@ -442,7 +447,7 @@ namespace PCLock
                 " 道题（数学填答案，语文/英语四选一，答错清零重来），或由家长输入 PIN 解锁。";
             tip.ForeColor = Color.Gray;
             tip.AutoSize = true;
-            tip.Location = new Point(15, 665);
+            tip.Location = new Point(15, 750);
             Controls.Add(tip);
         }
 
