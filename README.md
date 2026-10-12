@@ -147,6 +147,15 @@ pclock/
 - **锁屏期间 Timer 空转**（`App.cs`）：`OnTick` 首行 `lockForm != null` 即 `return`，开销可忽略。
   加 `Stop()/Start()` 反而有进程崩溃后 Timer 永不自启的风险，保留当前设计。
 
+### 编译与发布
+
+- **Visual Studio 2022**：双击 `PCLock.sln` 打开；`Ctrl+Shift+B` 编译，`F5` 调试。发布时切到 **Release** 配置编译，输出在 `bin\Release\PCLock.exe`。
+- **命令行（无需 VS）**：直接运行仓库根目录的 `build.bat`（调用系统自带 `csc` 编译为单文件 `PCLock.exe`）。
+- 发布部署只需把 `PCLock.exe` 与同目录的 `chinese.txt`、`english.txt`（可选，缺失则回退内置题库）一起拷贝即可。
+- `bin/`、`obj/` 及 `PCLock.exe` 均已被 `.gitignore` 忽略，不会进入版本库。
+
+---
+
 ### 自定义题库（外部文件）
 
 语文、英语题库支持外部文件，家长可自行增删，**无需改代码、无需重新编译**。
