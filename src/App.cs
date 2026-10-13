@@ -23,6 +23,7 @@ namespace PCLock
         bool stopping;
         bool warned5, warned1; // 本轮是否已弹过 5 分钟 / 1 分钟提醒
         bool paused;            // 家长临时暂停计时（孩子仍可用，但不再倒计时）
+        int usedPending;        // 未落盘的"今日已用"秒数（内存累加，见 FlushUsed）
         Thread guardThread;
         EventWaitHandle stopEvent; // 供看门狗监听的停止事件
 
@@ -133,6 +134,7 @@ namespace PCLock
             if (stopping) return;
             try
             {
+                FlushUsed();
                 Store.SetRemaining(remaining);
                 Store.SetLastSeenUtc(0);
             }
@@ -147,6 +149,7 @@ namespace PCLock
             {
                 try
                 {
+                    FlushUsed();
                     Store.SetRemaining(remaining);
                     Store.SetLastSeenUtc(0);
                 }
@@ -166,17 +169,33 @@ namespace PCLock
                 return;
             }
             remaining--;
-            Store.AddUsedSeconds(currentUser, 1);        // 统计今日已用（仅解锁使用期间、按用户）
+            usedPending++;   // 统计今日已用：仅内存累加，落盘见 FlushUsed
             // 用范围判断而非精确相等，避免 Timer 精度漂移跳过提醒
             if (!warned5 && remaining <= Constants.Warn5MinSec) { Warn("电脑还剩 5 分钟使用时间"); warned5 = true; }
             if (!warned1 && remaining <= Constants.Warn1MinSec) { Warn("电脑还剩 1 分钟使用时间"); warned1 = true; }
-            if (remaining <= 0) { LockNow(false); return; }
+            if (remaining <= 0) { FlushUsed(); LockNow(false); return; }
             if (remaining % Constants.PersistIntervalSec == 0)
             {
                 Store.SetRemaining(remaining);
                 Store.SetLastSeenUtc(DateTime.UtcNow.Ticks);
+                FlushUsed();   // 与剩余时间同频落盘
             }
             tray.Text = "电脑锁 - 剩余 " + FormatRemain(remaining);
+        }
+
+        /// <summary>
+        /// 把内存里累计的"今日已用秒数"写回注册表。
+        /// 原先 OnTick 每秒直接写一次 HKLM；改为内存累加后与 remaining 同频（每
+        /// PersistIntervalSec 秒）落盘，注册表写次数约为原来的 1/15。锁屏/解锁/关机/
+        /// 退出等节点均强制 flush，避免丢统计。
+        /// </summary>
+        void FlushUsed()
+        {
+            if (usedPending <= 0) return;
+            int n = usedPending;
+            usedPending = 0;
+            try { Store.AddUsedSeconds(currentUser, n); }
+            catch (Exception) { }
         }
 
         static string FormatRemain(int sec)
@@ -210,6 +229,7 @@ namespace PCLock
         /// </summary>
         public void LockNow(bool dueToWindow)
         {
+            FlushUsed();                              // 进入锁屏前先结掉本次统计
             if (lockForm != null) return;
             Store.SetLockFlag(1);                     // 持久化：重启后仍处于锁定
             Protection.SetTaskMgrDisabled(true);      // 锁屏期间禁用任务管理器
@@ -228,6 +248,7 @@ namespace PCLock
         /// <summary>解锁（答对题或家长PIN成功后调用）。解锁即开始新一轮计时。</summary>
         public void Unlock()
         {
+            FlushUsed();                               // 新一轮计时开始前先结掉统计
             if (lockForm != null)
             {
                 lockForm.AllowClose = true;
@@ -397,6 +418,7 @@ namespace PCLock
             if (timer != null) timer.Stop();
             try
             {
+                FlushUsed();                           // 退出前结掉统计（卸载时数据随之删除）
                 if (lockForm != null)
                 {
                     lockForm.AllowClose = true;

@@ -29,41 +29,34 @@ jobs:
       - name: Build PCLock.exe
         shell: cmd
         run: |
-          rem 优先使用 .NET 3.5 编译器（Win7 自带，产物在 Win7 上无需额外运行库）
-          set CSC=%WINDIR%\Microsoft.NET\Framework64\v3.5\csc.exe
-          if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework\v3.5\csc.exe
-          if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
-          if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe
-          if not exist "%CSC%" (
-            echo [错误] 未找到 csc.exe
+          rem 复用仓库内的 build.bat 作为唯一编译入口，避免 CI 里的编译清单与脚本漂移。
+          rem build.bat 内部已做 CI 感知（CI=true 时跳过 pause），产物在 bin\Release\。
+          call build.bat Release
+          if errorlevel 1 (
+            echo [错误] build.bat 编译失败
             exit /b 1
           )
-          echo 使用编译器: %CSC%
 
-          "%CSC%" /nologo /target:winexe /out:PCLock.exe /win32manifest:app.manifest /optimize+ /codepage:65001 ^
-            /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Security.dll ^
-            src\Program.cs src\App.cs src\Store.cs src\MathUtil.cs src\Protection.cs src\Watchdog.cs src\LockForm.cs src\SettingsForm.cs src\Constants.cs
-
-          echo ExitCode: %errorlevel%
-
-          if not exist PCLock.exe (
-            echo [错误] PCLock.exe 未生成
-            dir
+          if not exist bin\Release\PCLock.exe (
+            echo [错误] bin\Release\PCLock.exe 未生成
+            dir bin\Release
             exit /b 1
           )
 
           echo [成功] PCLock.exe 已生成
-          dir PCLock.exe
+          dir bin\Release\PCLock.exe
 
       - name: Package Release
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
-          Copy-Item -Path "PCLock.exe" -Destination "release\" -Force
-          # 如需一起打包，可取消下面注释
-          # Copy-Item -Path "app.manifest" -Destination "release\" -Force
-          # Copy-Item -Path "README.md" -Destination "release\" -Force
-          # Copy-Item -Path "LICENSE" -Destination "release\" -Force
+          # 打包整个 bin\Release：build.bat 已把 PCLock.exe.config、chinese.txt、
+          # english.txt、AppIcon.ico 一并复制到该目录，它们必须与 PCLock.exe 同目录。
+          Copy-Item -Path "bin\Release\*" -Destination "release\" -Force -Recurse
+          if (-not (Test-Path "release\PCLock.exe")) {
+            Write-Error "release\PCLock.exe 缺失"
+            exit 1
+          }
           Compress-Archive -Path "release\*" -DestinationPath "PCLock-Release.zip" -Force
           Write-Host "===== 打包内容 ====="
           Get-ChildItem release

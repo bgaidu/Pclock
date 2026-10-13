@@ -46,4 +46,15 @@
     </Content>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+
+  <!--
+    src\_Version.cs 由 gen_version.bat 生成（提供 AppVersion 类，被 SettingsForm 引用），
+    且已被 .gitignore 忽略、不入库。Compile 项用通配符 src\**\*.cs，因此全新 clone 后
+    直接用 VS / msbuild 编译时该文件尚不存在。这里在编译前统一生成，与 build.bat 共用
+    同一个脚本，避免版本生成逻辑在多处重复实现而漂移。
+    机器未装 git 时脚本回落到 Commit="local"，不会中断编译。
+  -->
+  <Target Name="GenerateVersionFile" BeforeTargets="BeforeBuild">
+    <Exec Command="call &quot;$(MSBuildProjectDirectory)\gen_version.bat&quot;" ContinueOnError="true" />
+  </Target>
 </Project>

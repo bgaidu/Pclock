@@ -117,6 +117,51 @@ public class QuestionTests
             Assert.AreEqual(10, CountSubject(qs, s));
         }
     }
+
+    // ===== 以下覆盖"多选年级 + 多选科目"版 API =====
+    // 这是 UI 真正走的路径（LockForm.StartBatch → GetBatch(int[], Subject[], int)）。
+    // 该重载内部是"科目轮转均派"，没有单科数量硬上限，因此断言的是均派性质
+    // （单科 <= ceil(总数/科目数) 且每科都出现），而不是旧 API 那个固定的 4。
+
+    static List<Question> MultiSelect(int total)
+    {
+        int[] grades = new int[] { 1, 2, 3, 4, 5, 6 };
+        Subject[] subs = new Subject[] { Subject.Chinese, Subject.Math, Subject.English };
+        return QuestionBank.GetBatch(grades, subs, total);
+    }
+
+    [Test]
+    public void MultiSelectBatchHasRequestedCount()
+    {
+        Assert.AreEqual(Constants.TotalQuestions,
+            MultiSelect(Constants.TotalQuestions).Count, "multi-select count");
+    }
+
+    [Test]
+    public void MultiSelectRotatesEvenly()
+    {
+        int total = Constants.TotalQuestions;
+        int cap = (int)Math.Ceiling(total / 3.0);   // 三科均派时单科上限
+        List<Question> qs = MultiSelect(total);
+        Assert.AreEqual(total, qs.Count, "multi-select total");
+        foreach (Subject s in new Subject[] { Subject.Chinese, Subject.Math, Subject.English })
+        {
+            int c = CountSubject(qs, s);
+            Assert.LessOrEqual(c, cap, "multi-select " + s + " 超过均派上限");
+            Assert.GreaterOrEqual(c, 1, "multi-select " + s + " 缺席");
+        }
+    }
+
+    [Test]
+    public void MultiSelectSingleSubjectIsPure()
+    {
+        int[] grades = new int[] { 3 };
+        foreach (Subject s in new Subject[] { Subject.Chinese, Subject.Math, Subject.English })
+        {
+            List<Question> qs = QuestionBank.GetBatch(grades, new Subject[] { s }, 10);
+            Assert.AreEqual(10, CountSubject(qs, s), "multi-select single " + s);
+        }
+    }
 }
 
 public class Program
