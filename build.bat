@@ -51,7 +51,7 @@ for /f "delims=" %%i in ('git rev-parse --short HEAD 2^>nul') do set GITSHA=%%i
 
 "%CSC%" /nologo /target:winexe /out:"%OUTDIR%PCLock.exe" /win32manifest:app.manifest /win32icon:AppIcon.ico %OPTS% /codepage:65001 ^
   /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Security.dll ^
-  src\Program.cs src\App.cs src\Store.cs src\Protection.cs src\Watchdog.cs src\Questions.cs src\ChineseData.cs src\EnglishData.cs src\LockForm.cs src\SettingsForm.cs src\MaskForm.cs src\Constants.cs src\_Version.cs
+  src\Program.cs src\App.cs src\Store.cs src\Protection.cs src\Watchdog.cs src\Questions.cs src\ChineseData.cs src\EnglishData.cs src\LockForm.cs src\SettingsForm.cs src\Constants.cs src\_Version.cs
 
 if errorlevel 1 (
   echo [错误] 编译失败。

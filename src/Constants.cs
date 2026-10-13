@@ -43,10 +43,6 @@ namespace PCLock
         // === UI ===
         public const int UiTimerIntervalMs = 500; // LockForm 保持全屏/焦点定时器
 
-        // === 渐进遮罩 ===
-        public const int MaskStartSec = 300;       // 最后 5 分钟开始渐暗
-        public const double MaskMaxOpacity = 0.55; // 遮罩最大不透明度
-
         // === 默认值 ===
         public const int DefaultGrade = 3;
         public const int DefaultSubject = (int)Subject.Mixed; // 0 = 混合随机

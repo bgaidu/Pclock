@@ -18,7 +18,6 @@ namespace PCLock
         NotifyIcon tray;
         System.Windows.Forms.Timer timer;
         LockForm lockForm;
-        MaskForm mask;          // 渐进遮罩（锁屏前最后 N 分钟渐暗）
         int remaining;          // 剩余秒数
         string currentUser;     // 当前 Windows 用户（按用户分别限制）
         bool stopping;
@@ -66,9 +65,6 @@ namespace PCLock
             timer.Interval = 1000;
             timer.Tick += OnTick;
             timer.Start();
-
-            // 渐进遮罩窗体（非模态、点击穿透；OnTick 中按剩余时间显隐）
-            mask = new MaskForm();
 
             // 正常注销/关机（开始菜单关机、重启、注销）时清掉时间戳并保存剩余时间，
             // 下次开机不按离线时长扣减；硬断电收不到该事件，仍会在下次开机扣离线时长。
@@ -162,7 +158,7 @@ namespace PCLock
         void OnTick(object sender, EventArgs e)
         {
             if (stopping || lockForm != null) return;   // 锁屏/退出中不计时（避免退出过程中再次触发 LockNow）
-            if (paused) { tray.Text = "电脑锁 - 已暂停"; if (mask != null && mask.Visible) mask.Hide(); return; }
+            if (paused) { tray.Text = "电脑锁 - 已暂停"; return; }
             // 每日时段：不在允许时段内则强制锁屏（硬锁），且不计时、不扣时长（家长暂停时例外，已在上行处理）
             if (!Store.IsWithinWindow(currentUser))
             {
@@ -171,7 +167,6 @@ namespace PCLock
             }
             remaining--;
             Store.AddUsedSeconds(currentUser, 1);        // 统计今日已用（仅解锁使用期间、按用户）
-            UpdateMask();
             // 用范围判断而非精确相等，避免 Timer 精度漂移跳过提醒
             if (!warned5 && remaining <= Constants.Warn5MinSec) { Warn("电脑还剩 5 分钟使用时间"); warned5 = true; }
             if (!warned1 && remaining <= Constants.Warn1MinSec) { Warn("电脑还剩 1 分钟使用时间"); warned1 = true; }
@@ -216,7 +211,6 @@ namespace PCLock
         public void LockNow(bool dueToWindow)
         {
             if (lockForm != null) return;
-            if (mask != null && mask.Visible) mask.Hide();
             Store.SetLockFlag(1);                     // 持久化：重启后仍处于锁定
             Protection.SetTaskMgrDisabled(true);      // 锁屏期间禁用任务管理器
             lockForm = new LockForm(dueToWindow);
@@ -230,23 +224,6 @@ namespace PCLock
 
         /// <summary>当前用户是否处于允许使用时段内</summary>
         public bool IsWithinWindow() { return Store.IsWithinWindow(currentUser); }
-
-        /// <summary>渐进遮罩：最后 MaskStartSec 秒内随剩余时间渐暗并提示</summary>
-        void UpdateMask()
-        {
-            if (mask == null) return;
-            if (stopping || paused || lockForm != null || remaining <= 0)
-            {
-                if (mask.Visible) mask.Hide();
-                return;
-            }
-            if (remaining <= Constants.MaskStartSec)
-            {
-                if (!mask.Visible) mask.Show();
-                mask.SetLevel(remaining);
-            }
-            else if (mask.Visible) mask.Hide();
-        }
 
         /// <summary>解锁（答对题或家长PIN成功后调用）。解锁即开始新一轮计时。</summary>
         public void Unlock()
@@ -418,7 +395,6 @@ namespace PCLock
         {
             stopping = true;
             if (timer != null) timer.Stop();
-            if (mask != null) { try { mask.Close(); } catch (Exception) { } }
             try
             {
                 if (lockForm != null)
