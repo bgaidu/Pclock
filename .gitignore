@@ -19,3 +19,6 @@ bin/
 
 # build.bat 自动生成的版本信息（随 git commit 变化，不入库）
 _Version.cs
+
+# WorkBuddy 会话工作目录（项目记忆、临时备份等，不入库）
+.workbuddy/
