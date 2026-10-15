@@ -1,17 +1,23 @@
 using System;
-using System.Diagnostics;
 using System.Drawing;
 using System.Threading;
 using System.Windows.Forms;
-using Microsoft.Win32;
 
 namespace PCLock
 {
     /// <summary>
     /// 主程序：托盘常驻 + 倒计时 + 锁屏调度。
     /// 倒计时基于"剩余秒数"并定期写回注册表，改系统时间、重启都无法重置。
+    ///
+    /// 本类按职责拆分为多个文件（同一 partial class，行为不变）：
+    ///   App.cs           核心：字段 / 构造 / 倒计时 / 锁屏调度 / 离线折算
+    ///   App.Tray.cs      托盘与家长设置入口
+    ///   App.Guard.cs     看门狗守护（GuardLoop / EnsureWatchdog / WaitWatchdogExit）
+    ///   App.Power.cs     关机 / 睡眠事件订阅与处理
+    ///   App.Shutdown.cs  退出与卸载
+    ///   StartupManager.cs  开机自启（计划任务 / HKLM Run 回退），独立静态类
     /// </summary>
-    public class App : ApplicationContext
+    public partial class App : ApplicationContext
     {
         public static App Instance;
 
@@ -24,6 +30,7 @@ namespace PCLock
         bool warned5, warned1; // 本轮是否已弹过 5 分钟 / 1 分钟提醒
         bool paused;            // 家长临时暂停计时（孩子仍可用，但不再倒计时）
         int usedPending;        // 未落盘的"今日已用"秒数（内存累加，见 FlushUsed）
+        int persistFailCount;   // 连续持久化失败次数，达阈值进入安全锁屏（见 OnTick）
         Thread guardThread;
         EventWaitHandle stopEvent; // 供看门狗监听的停止事件
 
@@ -36,14 +43,16 @@ namespace PCLock
             {
                 stopEvent = new EventWaitHandle(false, EventResetMode.ManualReset, Constants.StopEventName);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Program.Log("停止事件创建失败，看门狗将无法收到退出信号: " + ex.Message);
                 stopEvent = null;
             }
 
             Store.Init();
             Protection.ProtectSelf();     // 自保护：拒绝任务管理器结束进程
-            EnsureStartup();              // 开机自启（计划任务最高权限，无 UAC 弹窗）
+            EnsureWatchdog();             // 立即确保看门狗在运行（原依赖 GuardLoop 3 秒后首轮轮询才发现，存在保护空窗）
+            StartupManager.Ensure();      // 开机自启（计划任务最高权限，无 UAC 弹窗）
 
             currentUser = Store.GetCurrentUser();
             remaining = Store.GetRemaining();
@@ -51,15 +60,7 @@ namespace PCLock
             if (!midSession) remaining = Store.GetDurationMinutes(currentUser) * 60;
 
             // 托盘图标
-            tray = new NotifyIcon();
-            tray.Icon = Program.LoadAppIcon() ?? SystemIcons.Shield;
-            tray.Text = "电脑锁 - 运行中";
-            tray.Visible = true;
-            ContextMenuStrip menu = new ContextMenuStrip();
-            menu.Items.Add("设置…（需家长PIN）", null, delegate { ShowSettings(); });
-            menu.Items.Add("立即锁定", null, delegate { LockNow(); });
-            tray.ContextMenuStrip = menu;
-            tray.DoubleClick += delegate { ShowSettings(); };
+            BuildTray();
 
             // 每秒倒计时
             timer = new System.Windows.Forms.Timer();
@@ -67,13 +68,8 @@ namespace PCLock
             timer.Tick += OnTick;
             timer.Start();
 
-            // 正常注销/关机（开始菜单关机、重启、注销）时清掉时间戳并保存剩余时间，
-            // 下次开机不按离线时长扣减；硬断电收不到该事件，仍会在下次开机扣离线时长。
-            // 若关机被其他程序取消，OnTick 会在 15 秒内重新写回时间戳。
-            SystemEvents.SessionEnding += OnSessionEnding;
-            // 休眠/睡眠同样"不扣时长"：挂起时清时间戳、保存剩余，醒来后继续倒计时。
-            // （OnTick 在系统挂起期间停摆，醒来继续递减，本就不扣；此处显式清时间戳使其语义与关机一致。）
-            SystemEvents.PowerModeChanged += OnPowerModeChanged;
+            // 关机 / 睡眠事件（见 App.Power.cs）
+            HookPowerEvents();
 
             // 看门狗守护线程：看门狗进程被杀则重新拉起
             guardThread = new Thread(GuardLoop);
@@ -92,70 +88,30 @@ namespace PCLock
         /// 上次运行为硬断电中断时，按 UTC 墙钟折算扣除离线期间的时长，
         /// 防止直接断电"冻结"倒计时。时钟回拨时忽略（不能借此加时）。
         /// 返回时长是否已被扣到 0（需要开机即锁屏）。
-        /// 
+        ///
         /// 注意：正常关机/重启时 Shutdown 会设置 LastSeenUtc=0，
-        /// 此时 DeductOffline 直接返回 false，不会触发锁屏。
+        /// 此时不扣除，不会触发锁屏。
+        /// 折算规则本身是 Store.DeductOffline 纯函数（有单元测试覆盖），这里只做接线与日志。
         /// </summary>
         bool DeductOffline()
         {
             long last = Store.GetLastSeenUtc();
-            if (last <= 0)
+            Store.OfflineDeductResult r = Store.DeductOffline(remaining, last, DateTime.UtcNow.Ticks);
+            remaining = r.Remaining;
+            if (!r.Deducted)
             {
-                Program.Log("DeductOffline: LastSeenUtc=0, 正常退出不扣除");
-                return false;   // 上次是正常退出（时间戳已清），不扣
-            }
-            
-            // 使用浮点除法并向上取整，避免整数除法向下取整导致少扣时间
-            double elapsedSec = (DateTime.UtcNow.Ticks - last) / (double)TimeSpan.TicksPerSecond;
-            if (elapsedSec <= 0)
-            {
-                Program.Log("DeductOffline: 时钟回拨，不扣除");
+                if (last <= 0)
+                    Program.Log("DeductOffline: LastSeenUtc=0, 正常退出不扣除");
+                else if (r.ElapsedSeconds <= 0)
+                    Program.Log("DeductOffline: 时钟回拨，不扣除");
+                else
+                    Program.Log("DeductOffline: 离线时间 " + r.ElapsedSeconds.ToString("F1") + " 秒 < " +
+                        Constants.OfflineDeductThresholdSec + " 秒，视为正常关机不扣除");
                 return false;
             }
-            
-            // 如果离线时间小于 30 秒，认为是正常关机/重启，不扣除
-            // （避免因系统关机延迟导致误扣）
-            if (elapsedSec < 30)
-            {
-                Program.Log("DeductOffline: 离线时间 " + elapsedSec.ToString("F1") + " 秒 < 30 秒，视为正常关机不扣除");
-                return false;
-            }
-            
-            long elapsedCeil = (long)Math.Ceiling(elapsedSec);
-            remaining -= (int)Math.Min(elapsedCeil, (long)int.MaxValue);
-            if (remaining < 0) remaining = 0;
             Store.SetRemaining(remaining);
-            Program.Log("DeductOffline: 离线扣除 " + elapsedCeil + " 秒，剩余 " + remaining + " 秒");
+            Program.Log("DeductOffline: 离线扣除 " + r.DeductedSeconds + " 秒，剩余 " + remaining + " 秒");
             return remaining == 0;
-        }
-
-        void OnSessionEnding(object sender, SessionEndingEventArgs e)
-        {
-            if (stopping) return;
-            try
-            {
-                FlushUsed();
-                Store.SetRemaining(remaining);
-                Store.SetLastSeenUtc(0);
-            }
-            catch (Exception) { }
-        }
-
-        void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
-        {
-            if (stopping) return;
-            // 休眠/睡眠：不扣时长，仅保存剩余并清时间戳（与正常关机一致）。
-            if (e.Mode == PowerModes.Suspend)
-            {
-                try
-                {
-                    FlushUsed();
-                    Store.SetRemaining(remaining);
-                    Store.SetLastSeenUtc(0);
-                }
-                catch (Exception) { }
-            }
-            // Resume：不处理，OnTick 醒来后继续递减。
         }
 
         void OnTick(object sender, EventArgs e)
@@ -176,8 +132,26 @@ namespace PCLock
             if (remaining <= 0) { FlushUsed(); LockNow(false); return; }
             if (remaining % Constants.PersistIntervalSec == 0)
             {
-                Store.SetRemaining(remaining);
-                Store.SetLastSeenUtc(DateTime.UtcNow.Ticks);
+                try
+                {
+                    Store.SetRemaining(remaining);
+                    Store.SetLastSeenUtc(DateTime.UtcNow.Ticks);
+                    persistFailCount = 0;
+                }
+                catch (Exception ex)
+                {
+                    // Store 内部已做异常保护，这里是双保险：连续失败进入安全态（立即锁屏），
+                    // 防止计时状态丢失后被"反复重启"绕过倒计时
+                    persistFailCount++;
+                    Program.Log("OnTick: 持久化失败第 " + persistFailCount + " 次: " + ex.Message);
+                    if (persistFailCount >= 3)
+                    {
+                        Program.Log("OnTick: 连续持久化失败，进入安全锁屏");
+                        FlushUsed();
+                        LockNow(false);
+                        return;
+                    }
+                }
                 FlushUsed();   // 与剩余时间同频落盘
             }
             tray.Text = "电脑锁 - 剩余 " + FormatRemain(remaining);
@@ -195,7 +169,7 @@ namespace PCLock
             int n = usedPending;
             usedPending = 0;
             try { Store.AddUsedSeconds(currentUser, n); }
-            catch (Exception) { }
+            catch (Exception ex) { Program.Log("FlushUsed 失败: " + ex.Message); }
         }
 
         static string FormatRemain(int sec)
@@ -283,200 +257,6 @@ namespace PCLock
             remaining += minutes * 60;
             if (remaining < 0) remaining = 0;
             Store.SetRemaining(remaining);
-        }
-
-        /// <summary>守护线程：看门狗进程被杀 → 重新拉起；锁屏期间持续确保任务管理器被禁用</summary>
-        void GuardLoop()
-        {
-            while (!stopping)
-            {
-                Thread.Sleep(Constants.GuardCheckIntervalMs);
-                if (stopping) break;
-                bool wdAlive = true;
-                try { Mutex.OpenExisting(Constants.WatchMutexName); }
-                catch (WaitHandleCannotBeOpenedException) { wdAlive = false; }
-                catch (Exception) { wdAlive = true; }
-                if (!wdAlive)
-                {
-                    try { Process.Start(Application.ExecutablePath, "--watchdog"); }
-                    catch (Exception) { }
-                    Thread.Sleep(5000);
-                }
-                if (lockForm != null) Protection.SetTaskMgrDisabled(true);
-            }
-        }
-
-        public void ShowSettings()
-        {
-            bool ok = false;
-            using (PinDialog pd = new PinDialog("家长验证", "请输入家长 PIN：",
-                delegate(string s) { return Store.VerifyPin(s); }))
-            {
-                ok = (pd.ShowDialog() == DialogResult.OK);
-            }
-            if (!ok) return;
-            using (SettingsForm sf = new SettingsForm()) sf.ShowDialog();
-        }
-
-        /// <summary>
-        /// 开机自启：优先创建"登录时运行、最高权限"的计划任务（无UAC弹窗），失败则退回 HKLM Run 键。
-        /// 注意：schtasks /TR 参数中路径含空格时必须用引号包裹，且引号需要正确转义。
-        /// </summary>
-        void EnsureStartup()
-        {
-            string exe = Application.ExecutablePath;
-            bool taskCreated = false;
-
-            // 方法1：创建计划任务（登录时运行，最高权限）
-            try
-            {
-                // schtasks 的 /TR 参数：值含空格时 schtasks 会在第一个空格处拆分命令，
-                // 因此路径本身还要包一层内层引号：/TR "\"C:\path with space\PCLock.exe\""
-                // /DELAY 0000:30 表示登录后延迟 30 秒触发（Win7+ 均支持）
-                string arguments = "/Create /F /SC ONLOGON /RL HIGHEST /DELAY 0000:30 /TN \"" + Constants.TaskName + "\" /TR \"\\\"" + exe + "\\\"\"";
-                
-                ProcessStartInfo psi = new ProcessStartInfo("schtasks", arguments);
-                psi.CreateNoWindow = true;
-                psi.UseShellExecute = false;
-                psi.RedirectStandardOutput = true;
-                psi.RedirectStandardError = true;
-                
-                using (Process p = Process.Start(psi))
-                {
-                    string output = p.StandardOutput.ReadToEnd();
-                    string error = p.StandardError.ReadToEnd();
-                    p.WaitForExit(10000);
-                    
-                    if (p.ExitCode == 0)
-                    {
-                        taskCreated = true;
-                        Program.Log("EnsureStartup: 计划任务创建成功");
-                    }
-                    else
-                    {
-                        Program.Log("EnsureStartup: 计划任务创建失败，ExitCode=" + p.ExitCode);
-                        Program.Log("EnsureStartup: stdout=" + output);
-                        Program.Log("EnsureStartup: stderr=" + error);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Program.Log("EnsureStartup: 计划任务创建异常: " + ex.Message);
-            }
-
-            // 方法2：回退到 HKLM Run 键
-            if (!taskCreated)
-            {
-                try
-                {
-                    using (RegistryKey k = Registry.LocalMachine.CreateSubKey(
-                        "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"))
-                    {
-                        k.SetValue("PCLock", "\"" + exe + "\"");
-                        Program.Log("EnsureStartup: 已写入 HKLM Run 键回退");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Program.Log("EnsureStartup: HKLM Run 键写入失败: " + ex.Message);
-                }
-            }
-
-            // 验证：检查计划任务是否存在
-            try
-            {
-                ProcessStartInfo psi = new ProcessStartInfo("schtasks",
-                    "/Query /TN \"" + Constants.TaskName + "\"");
-                psi.CreateNoWindow = true;
-                psi.UseShellExecute = false;
-                psi.RedirectStandardOutput = true;
-                using (Process p = Process.Start(psi))
-                {
-                    string output = p.StandardOutput.ReadToEnd();
-                    p.WaitForExit(5000);
-                    if (p.ExitCode == 0 && output.Contains(Constants.TaskName))
-                    {
-                        Program.Log("EnsureStartup: 验证计划任务存在");
-                    }
-                    else
-                    {
-                        Program.Log("EnsureStartup: 验证计划任务不存在！");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Program.Log("EnsureStartup: 验证计划任务异常: " + ex.Message);
-            }
-        }
-
-        /// <summary>退出 / 卸载</summary>
-        public void Shutdown(bool uninstall)
-        {
-            stopping = true;
-            if (timer != null) timer.Stop();
-            try
-            {
-                FlushUsed();                           // 退出前结掉统计（卸载时数据随之删除）
-                if (lockForm != null)
-                {
-                    lockForm.AllowClose = true;
-                    lockForm.Dispose();
-                    lockForm = null;
-                }
-                Store.SetLockFlag(0);
-                Protection.SetTaskMgrDisabled(false);
-                if (!uninstall)
-                {
-                    // 与退出确认框语义一致："下次开机自动重新开始"——
-                    // 重置为完整时长，并清掉断电折算时间戳，下次开机不扣离线时长
-                    remaining = Store.GetDurationMinutes(currentUser) * 60;
-                    Store.SetRemaining(remaining);
-                    Store.SetLastSeenUtc(0);
-                }
-                // 通知看门狗自行退出（使用构造时创建/打开的事件对象）
-                if (stopEvent != null)
-                {
-                    try { stopEvent.Set(); }
-                    catch { }
-                }
-            }
-            catch (Exception) { }
-
-            if (uninstall)
-            {
-                try { Store.RemoveAll(); } catch (Exception) { }
-                try
-                {
-                    ProcessStartInfo psi = new ProcessStartInfo("schtasks",
-                        "/Delete /F /TN \"" + Constants.TaskName + "\"");
-                    psi.CreateNoWindow = true;
-                    psi.UseShellExecute = false;
-                    using (Process p = Process.Start(psi)) { p.WaitForExit(5000); }
-                }
-                catch (Exception) { }
-                try
-                {
-                    // 进程退出后再由系统删除全部文件
-                    string dir = Application.StartupPath;
-                    ProcessStartInfo psi = new ProcessStartInfo("cmd.exe",
-                        "/c ping 127.0.0.1 -n 6 > nul & rd /s /q \"" + dir + "\"");
-                    psi.CreateNoWindow = true;
-                    psi.UseShellExecute = false;
-                    Process.Start(psi);
-                }
-                catch (Exception) { }
-            }
-
-            Protection.UnprotectSelf();
-            // 释放停止事件
-            if (stopEvent != null)
-            {
-                try { stopEvent.Close(); }
-                catch { }
-            }
-            Environment.Exit(0);
         }
     }
 }

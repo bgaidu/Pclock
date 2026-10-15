@@ -15,6 +15,21 @@ namespace PCLock
     {
         static RegistryKey root;
 
+        // 日志下沉：Store 处于核心层，不依赖入口类 Program（测试构建 tests\run.bat 不编译
+        // Program.cs，直接调用 Program.Log 会因测试程序集里没有 Log 方法而编译失败）。
+        // 由 Program.Main 启动时注入真实日志；未注入时静默（单元测试场景）。
+        static Action<string> logSink;
+
+        /// <summary>注入日志输出（Program.Main 启动时调用）；传 null 恢复静默</summary>
+        public static void SetLogSink(Action<string> sink) { logSink = sink; }
+
+        static void Log(string msg)
+        {
+            Action<string> s = logSink;
+            if (s == null) return;
+            try { s(msg); } catch { }
+        }
+
         public static void Init()
         {
             if (root != null) return;
@@ -47,44 +62,110 @@ namespace PCLock
                     SetInt("FirstRunDone", 1);
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 // 首次初始化失败不算致命：用默认值继续跑
                 // 具体错误由 Store.VerifyPin/GetInt 兜底处理
+                Log("Store.Init 首次默认值写入失败: " + ex.Message);
             }
         }
 
+        // 注册表读写统一异常保护：运行中键被删除/权限变化/句柄失效时不再向上抛，
+        // 读失败返回默认值、写失败记日志，避免异常沿 OnTick 打到 UI 线程导致锁屏界面假死。
         static string GetStr(string name, string def)
         {
-            object v = root.GetValue(name);
-            return v == null ? def : v.ToString();
+            try
+            {
+                if (root == null) return def;
+                object v = root.GetValue(name);
+                return v == null ? def : v.ToString();
+            }
+            catch (Exception ex)
+            {
+                Log("Store.GetStr(" + name + ") 失败: " + ex.Message);
+                return def;
+            }
         }
 
         static void SetStr(string name, string val)
         {
-            root.SetValue(name, val);
+            try
+            {
+                if (root == null)
+                {
+                    Log("Store.SetStr(" + name + ") 失败: root 未初始化");
+                    return;
+                }
+                root.SetValue(name, val);
+            }
+            catch (Exception ex)
+            {
+                Log("Store.SetStr(" + name + ") 失败: " + ex.Message);
+            }
         }
 
         static int GetInt(string name, int def)
         {
-            object v = root.GetValue(name);
-            return v is int ? (int)v : def;
+            try
+            {
+                if (root == null) return def;
+                object v = root.GetValue(name);
+                return v is int ? (int)v : def;
+            }
+            catch (Exception ex)
+            {
+                Log("Store.GetInt(" + name + ") 失败: " + ex.Message);
+                return def;
+            }
         }
 
         static void SetInt(string name, int val)
         {
-            root.SetValue(name, val, RegistryValueKind.DWord);
+            try
+            {
+                if (root == null)
+                {
+                    Log("Store.SetInt(" + name + ") 失败: root 未初始化");
+                    return;
+                }
+                root.SetValue(name, val, RegistryValueKind.DWord);
+            }
+            catch (Exception ex)
+            {
+                Log("Store.SetInt(" + name + ") 失败: " + ex.Message);
+            }
         }
 
         static long GetLong(string name, long def)
         {
-            object v = root.GetValue(name);
-            return v is long ? (long)v : def;
+            try
+            {
+                if (root == null) return def;
+                object v = root.GetValue(name);
+                return v is long ? (long)v : def;
+            }
+            catch (Exception ex)
+            {
+                Log("Store.GetLong(" + name + ") 失败: " + ex.Message);
+                return def;
+            }
         }
 
         static void SetLong(string name, long val)
         {
-            root.SetValue(name, val, RegistryValueKind.QWord);
+            try
+            {
+                if (root == null)
+                {
+                    Log("Store.SetLong(" + name + ") 失败: root 未初始化");
+                    return;
+                }
+                root.SetValue(name, val, RegistryValueKind.QWord);
+            }
+            catch (Exception ex)
+            {
+                Log("Store.SetLong(" + name + ") 失败: " + ex.Message);
+            }
         }
 
         public static int GetDurationMinutes()
@@ -278,7 +359,21 @@ namespace PCLock
                 if (dash < 0) continue;
                 TimeSpan? a = ParseHm(seg.Substring(0, dash));
                 TimeSpan? b = ParseHm(seg.Substring(dash + 1));
-                if (a.HasValue && b.HasValue && a.Value <= now && now <= b.Value) return true;
+                if (a.HasValue && b.HasValue)
+                {
+                    if (a.Value <= b.Value)
+                    {
+                        // 普通时段（08:00-12:00）：闭区间
+                        if (a.Value <= now && now <= b.Value) return true;
+                    }
+                    else
+                    {
+                        // 跨午夜时段（如 22:00-06:00）：起始大于结束时按环绕判断，
+                        // 覆盖 22:00-24:00 与 00:00-06:00 两段。原实现 a<=now<=b 恒为 false，
+                        // 家长填写跨午夜时段会导致全天硬锁、孩子完全无法使用电脑。
+                        if (now >= a.Value || now <= b.Value) return true;
+                    }
+                }
             }
             return false;
         }
@@ -292,6 +387,51 @@ namespace PCLock
             if (!int.TryParse(s.Substring(colon + 1), out m)) return null;
             if (h < 0 || h > 23 || m < 0 || m > 59) return null;
             return new TimeSpan(h, m, 0);
+        }
+
+        // === 硬断电离线时长折算（纯函数，不读注册表，便于单元测试）===
+
+        /// <summary>离线折算结果：调用方据此更新状态与写日志</summary>
+        public struct OfflineDeductResult
+        {
+            /// <summary>折算后的剩余秒数（未折算时为入参原值）</summary>
+            public int Remaining;
+            /// <summary>本次是否发生了折算（false = 正常退出 / 时钟回拨 / 离线不足阈值）</summary>
+            public bool Deducted;
+            /// <summary>实际扣除秒数（向上取整；未折算为 0）</summary>
+            public int DeductedSeconds;
+            /// <summary>距上次时间戳的墙钟秒数（时间戳无效或时钟回拨时为 0）</summary>
+            public double ElapsedSeconds;
+        }
+
+        /// <summary>
+        /// 纯函数：硬断电离线时长折算。规则（与 App.DeductOffline 原逻辑一致）：
+        /// - lastSeenUtcTicks &lt;= 0：上次正常退出（Shutdown 会清时间戳），不折算；
+        /// - 时钟回拨（nowUtcTicks &lt; lastSeenUtcTicks）：不折算，防止改系统时间加时；
+        /// - 离线不足 Constants.OfflineDeductThresholdSec：视为正常关机延迟，不折算；
+        /// - 否则按离线秒数向上取整扣减，剩余不足扣到 0。
+        ///   向上取整是故意的：零点几秒也不给"零成本重启"的可乘之机。
+        /// </summary>
+        public static OfflineDeductResult DeductOffline(int currentRemaining, long lastSeenUtcTicks, long nowUtcTicks)
+        {
+            OfflineDeductResult r = new OfflineDeductResult();
+            r.Remaining = currentRemaining;
+            if (lastSeenUtcTicks <= 0) return r;   // 正常退出
+            double elapsedSec = (nowUtcTicks - lastSeenUtcTicks) / (double)TimeSpan.TicksPerSecond;
+            if (elapsedSec <= 0) return r;         // 时钟回拨（ElapsedSeconds 保持 0）
+            if (elapsedSec < PCLockConstants.OfflineDeductThresholdSec)
+            {
+                r.ElapsedSeconds = elapsedSec;     // 记录真实离线时长，供调用方写日志
+                return r;                          // 视为正常关机，不扣
+            }
+            long elapsedCeil = (long)Math.Ceiling(elapsedSec);
+            long deduct = elapsedCeil > int.MaxValue ? int.MaxValue : elapsedCeil;
+            long left = (long)currentRemaining - deduct;
+            r.Remaining = left < 0 ? 0 : (int)left;
+            r.Deducted = true;
+            r.DeductedSeconds = (int)deduct;
+            r.ElapsedSeconds = elapsedSec;
+            return r;
         }
 
         public static int GetUsedToday(string user)

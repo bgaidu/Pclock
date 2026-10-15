@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace PCLock
@@ -14,6 +13,9 @@ namespace PCLock
     {
         public event EventHandler UnlockRequested;
         public bool AllowClose;
+        /// <summary>家长对话框（PIN 验证 / 家长设置）打开期间为 true：暂停锁屏的"抢焦点/抢置顶"，
+        /// 否则 UiTick 每 500ms 的 Activate() 会把家长设置窗口重新压到锁屏底层、导致无法操作。</summary>
+        public bool SuspendInteraction { get; set; }
 
         Label titleLabel;
         Label questionLabel;
@@ -23,6 +25,7 @@ namespace PCLock
         Button[] optBtns = new Button[4];
         Label meaningLabel;
         Button parentBtn;
+        Button settingsBtn;   // 锁屏界面上的"家长设置"入口（验证 PIN 后打开设置窗口）
         Panel parentPanel;
         Label pinLabel;
         TextBox pinBox;
@@ -54,10 +57,46 @@ namespace PCLock
             TopMost = true;
             ShowInTaskbar = false;
 
+            BuildTitleLabels();
+            BuildAnswerControls();
+            BuildParentEntry();
+            BuildParentSettingsEntry();
+            BuildOptionButtons();
+            AddCoreControls();
+
+            Resize += delegate { LayoutControls(); };
+
+            uiTimer = new Timer();
+            uiTimer.Interval = Constants.UiTimerIntervalMs;
+            uiTimer.Tick += UiTick;
+            uiTimer.Start();
+
+            if (dueToWindow)
+            {
+                ApplyDueToWindowUI();
+            }
+            else
+            {
+                StartBatch();
+            }
+            LayoutControls();
+
+            // 低级钩子初始化放在最后，确保前面初始化失败时也能正确清理
+            hook = new LowLevelHook();
+
+            // 扁平化按钮，规避视觉样式绘制期偶发的"创建窗口句柄"失败
+            Program.FlattenButtons(this);
+        }
+
+        void BuildTitleLabels()
+        {
             titleLabel = MakeLabel("时间已到，已锁定", 30, FontStyle.Bold, Color.White);
             questionLabel = MakeLabel("", 44, FontStyle.Bold, Color.FromArgb(120, 200, 255));
             statusLabel = MakeLabel("", 14, FontStyle.Regular, Color.Silver);
+        }
 
+        void BuildAnswerControls()
+        {
             answerBox = new TextBox();
             answerBox.Font = new Font("Microsoft YaHei", 20);
             answerBox.Size = new Size(180, 48);
@@ -79,7 +118,10 @@ namespace PCLock
             submitBtn.BackColor = Color.White;
             submitBtn.ForeColor = Color.Black;
             submitBtn.Click += delegate { SubmitAnswer(); };
+        }
 
+        void BuildParentEntry()
+        {
             parentBtn = new Button();
             parentBtn.Text = "家长入口";
             parentBtn.Font = new Font("Microsoft YaHei", 9);
@@ -125,7 +167,45 @@ namespace PCLock
             parentPanel.Controls.Add(pinOkBtn);
             parentPanel.Controls.Add(pinBackBtn);
             parentPanel.Visible = false;
+        }
 
+        /// <summary>
+        /// 锁屏界面左下角的"家长设置"入口：验证家长 PIN 后打开设置窗口（置顶于锁屏之上）。
+        /// 锁屏全屏覆盖且 TopMost，普通对话框会被压到底层，故打开期间暂停锁屏抢焦点
+        /// （SuspendInteraction），并让对话框自身 TopMost，保证家长设置清晰可见、可操作。
+        /// </summary>
+        void BuildParentSettingsEntry()
+        {
+            settingsBtn = new Button();
+            settingsBtn.Text = "家长设置";
+            settingsBtn.Font = new Font("Microsoft YaHei", 9);
+            settingsBtn.AutoSize = true;
+            settingsBtn.ForeColor = Color.DimGray;
+            settingsBtn.Click += delegate
+            {
+                this.SuspendInteraction = true;
+                try
+                {
+                    bool ok = false;
+                    using (PinDialog pd = new PinDialog("家长验证", "请输入家长 PIN：",
+                        delegate(string s) { return Store.VerifyPin(s); }))
+                    {
+                        ok = (pd.ShowDialog(this) == DialogResult.OK);
+                    }
+                    if (ok)
+                    {
+                        using (SettingsForm sf = new SettingsForm()) sf.ShowDialog(this);
+                    }
+                }
+                finally
+                {
+                    this.SuspendInteraction = false;
+                }
+            };
+        }
+
+        void BuildOptionButtons()
+        {
             // 选择题的 4 个选项按钮（拼音/汉语），默认隐藏，数学题时不显示
             for (int i = 0; i < 4; i++)
             {
@@ -144,44 +224,30 @@ namespace PCLock
             meaningLabel = MakeLabel("", 16, FontStyle.Regular, Color.FromArgb(170, 210, 170));
             meaningLabel.Visible = false;
             Controls.Add(meaningLabel);
+        }
 
+        void AddCoreControls()
+        {
             Controls.Add(titleLabel);
             Controls.Add(questionLabel);
             Controls.Add(statusLabel);
             Controls.Add(answerBox);
             Controls.Add(submitBtn);
             Controls.Add(parentBtn);
+            Controls.Add(settingsBtn);
             Controls.Add(parentPanel);
+        }
 
-            Resize += delegate { LayoutControls(); };
-
-            uiTimer = new Timer();
-            uiTimer.Interval = Constants.UiTimerIntervalMs;
-            uiTimer.Tick += UiTick;
-            uiTimer.Start();
-
-            if (dueToWindow)
-            {
-                titleLabel.Text = "当前不在使用时段";
-                string w = (App.Instance != null) ? Store.GetWindow(App.Instance.CurrentUser) : "";
-                questionLabel.Text = string.IsNullOrWhiteSpace(w) ? "当前不在允许使用时段" : ("允许使用时段：\n" + w);
-                statusLabel.Text = "时段开始后自动解锁，或由家长输入 PIN 解锁。";
-                answerBox.Visible = false;
-                submitBtn.Visible = false;
-                meaningLabel.Visible = false;
-                foreach (Button b in optBtns) b.Visible = false;
-            }
-            else
-            {
-                StartBatch();
-            }
-            LayoutControls();
-
-            // 低级钩子初始化放在最后，确保前面初始化失败时也能正确清理
-            hook = new LowLevelHook();
-
-            // 扁平化按钮，规避视觉样式绘制期偶发的"创建窗口句柄"失败
-            Program.FlattenButtons(this);
+        void ApplyDueToWindowUI()
+        {
+            titleLabel.Text = "当前不在使用时段";
+            string w = (App.Instance != null) ? Store.GetWindow(App.Instance.CurrentUser) : "";
+            questionLabel.Text = string.IsNullOrWhiteSpace(w) ? "当前不在允许使用时段" : ("允许使用时段：\n" + w);
+            statusLabel.Text = "时段开始后自动解锁，或由家长输入 PIN 解锁。";
+            answerBox.Visible = false;
+            submitBtn.Visible = false;
+            meaningLabel.Visible = false;
+            foreach (Button b in optBtns) b.Visible = false;
         }
 
         static Label MakeLabel(string text, float size, FontStyle style, Color color)
@@ -239,6 +305,8 @@ namespace PCLock
             statusLabel.Top = bottomOfInput + 40;
             parentBtn.Left = ClientSize.Width - parentBtn.Width - 24;
             parentBtn.Top = ClientSize.Height - parentBtn.Height - 24;
+            settingsBtn.Left = 24;
+            settingsBtn.Top = ClientSize.Height - settingsBtn.Height - 24;
             parentPanel.Left = cx - parentPanel.Width / 2;
             parentPanel.Top = y + 230;
         }
@@ -397,11 +465,15 @@ namespace PCLock
 
         void UiTick(object sender, EventArgs e)
         {
-            // 保持全屏覆盖 + 置顶 + 焦点
-            Rectangle vs = SystemInformation.VirtualScreen;
-            if (Bounds != vs) { Location = vs.Location; Size = vs.Size; }
-            if (!TopMost) TopMost = true;
-            if (!ContainsFocus) Activate();
+            // 保持全屏覆盖 + 置顶 + 焦点；但家长对话框（PIN/设置）打开期间暂停，
+            // 否则每 500ms 的 Activate() 会把家长设置窗口重新压到锁屏底层
+            if (!SuspendInteraction)
+            {
+                Rectangle vs = SystemInformation.VirtualScreen;
+                if (Bounds != vs) { Location = vs.Location; Size = vs.Size; }
+                if (!TopMost) TopMost = true;
+                if (!ContainsFocus) Activate();
+            }
 
             // 冷却按真实时间递减：uiTimer 每 500ms 触发一次，不能每个 tick 直接减秒
             if (wrongLeft > 0 || pinCooldown > 0)
@@ -502,87 +574,6 @@ namespace PCLock
                 }
             }
             base.WndProc(ref m);
-        }
-    }
-
-    /// <summary>低级键盘钩子：锁屏期间屏蔽 Win 键、Alt+Tab、Alt+Esc、Ctrl+Esc、Alt+方向键、Shift+Tab</summary>
-    public class LowLevelHook : IDisposable
-    {
-        const int WH_KEYBOARD_LL = 13;
-        const int WM_KEYDOWN = 0x0100;
-        const int WM_KEYUP = 0x0101;
-        const int WM_SYSKEYDOWN = 0x0104;
-        const int WM_SYSKEYUP = 0x0105;
-
-        // KBDLLHOOKSTRUCT 结构体（Win2000+ 均支持，Win7 完全兼容）
-        [StructLayout(LayoutKind.Sequential)]
-        struct KBDLLHOOKSTRUCT
-        {
-            public uint vkCode;
-            public uint scanCode;
-            public uint flags;
-            public uint time;
-            public IntPtr dwExtraInfo;
-        }
-
-        delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
-        IntPtr hHook;
-        HookProc proc;
-
-        [DllImport("user32.dll", SetLastError = true)]
-        static extern IntPtr SetWindowsHookEx(int idHook, HookProc lpfn, IntPtr hMod, uint dwThreadId);
-        [DllImport("user32.dll")]
-        static extern bool UnhookWindowsHookEx(IntPtr hhk);
-        [DllImport("user32.dll")]
-        static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
-        [DllImport("kernel32.dll")]
-        static extern IntPtr GetModuleHandle(string lpModuleName);
-        [DllImport("user32.dll")]
-        static extern short GetAsyncKeyState(int nVirtKey);
-
-        public LowLevelHook()
-        {
-            proc = HookCallback;
-            try { hHook = SetWindowsHookEx(WH_KEYBOARD_LL, proc, GetModuleHandle(null), 0); }
-            catch (Exception) { hHook = IntPtr.Zero; }
-        }
-
-        IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
-        {
-            if (nCode >= 0)
-            {
-                // 使用 KBDLLHOOKSTRUCT 获取按键信息（Win7 完全兼容）
-                KBDLLHOOKSTRUCT kb = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
-                int vk = (int)kb.vkCode;
-                bool isSysKey = (wParam == (IntPtr)WM_SYSKEYDOWN);
-                bool isKeyDown = (wParam == (IntPtr)WM_KEYDOWN);
-
-                // 通过 GetAsyncKeyState 检测修饰键状态（在钩子回调中调用是安全的）
-                bool alt = (GetAsyncKeyState(0x12) & 0x8000) != 0;
-                bool ctrl = (GetAsyncKeyState(0x11) & 0x8000) != 0;
-                bool shift = (GetAsyncKeyState(0x10) & 0x8000) != 0;
-
-                // Win 键 (LWin=0x5B, RWin=0x5C)
-                if (vk == 0x5B || vk == 0x5C) return (IntPtr)1;
-                // Alt+Tab：WM_SYSKEYDOWN 时 Tab 必然带 Alt，直接拦截
-                if (isSysKey && vk == 0x09) return (IntPtr)1;
-                // Shift+Tab：WM_KEYDOWN + Shift 按下
-                if (isKeyDown && vk == 0x09 && shift) return (IntPtr)1;
-                // Alt+Esc / Ctrl+Esc
-                if (vk == 0x1B && (alt || ctrl)) return (IntPtr)1;
-                // Alt+方向键
-                if (alt && (vk >= 0x25 && vk <= 0x28)) return (IntPtr)1;
-            }
-            return CallNextHookEx(hHook, nCode, wParam, lParam);
-        }
-
-        public void Dispose()
-        {
-            if (hHook != IntPtr.Zero)
-            {
-                UnhookWindowsHookEx(hHook);
-                hHook = IntPtr.Zero;
-            }
         }
     }
 }

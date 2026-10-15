@@ -373,6 +373,8 @@ namespace PCLock
         static List<Question> PickChinese(int grade, int count)
         {
             List<WordEntry> pool = FilterGrade(chinese, grade);
+            if (pool.Count == 0) pool = new List<WordEntry>(chinese);   // 该年级无词条：先用全题库，避免空池取随机数异常
+            if (pool.Count == 0) return MakeMathBatch(grade, count);    // 词库整体为空：退出口算题，保证题量
             Shuffle(pool);
             List<Question> list = new List<Question>();
             for (int i = 0; i < count; i++)
@@ -386,6 +388,8 @@ namespace PCLock
         static List<Question> PickEnglish(int grade, int count)
         {
             List<EnglishEntry> pool = FilterGrade(english, grade);
+            if (pool.Count == 0) pool = new List<EnglishEntry>(english);  // 该年级无词条：先用全题库，避免空池取随机数异常
+            if (pool.Count == 0) return MakeMathBatch(grade, count);      // 词库整体为空：退出口算题，保证题量
             Shuffle(pool);
             List<Question> list = new List<Question>();
             for (int i = 0; i < count; i++)
@@ -414,17 +418,22 @@ namespace PCLock
                 else if (s == Subject.Chinese)
                 {
                     List<WordEntry> w = FilterGrade(chinese, grade);
+                    if (w.Count == 0) w = new List<WordEntry>(chinese);
+                    if (w.Count == 0) { pools.Add(MakeMathBatch(grade, total)); continue; }
                     Shuffle(w);
                     List<Question> q = new List<Question>();
-                    for (int i = 0; i < w.Count && i < total; i++) q.Add(BuildChinese(w[i]));
+                    // 取满 total：词条不足时允许重复（原先只取 min(w.Count,total)，总题数会不足）
+                    for (int i = 0; i < total; i++) q.Add(BuildChinese(w[(i < w.Count) ? i : rnd.Next(w.Count)]));
                     pools.Add(q);
                 }
                 else
                 {
                     List<EnglishEntry> w = FilterGrade(english, grade);
+                    if (w.Count == 0) w = new List<EnglishEntry>(english);
+                    if (w.Count == 0) { pools.Add(MakeMathBatch(grade, total)); continue; }
                     Shuffle(w);
                     List<Question> q = new List<Question>();
-                    for (int i = 0; i < w.Count && i < total; i++) q.Add(BuildEnglish(w[i]));
+                    for (int i = 0; i < total; i++) q.Add(BuildEnglish(w[(i < w.Count) ? i : rnd.Next(w.Count)]));
                     pools.Add(q);
                 }
             }
@@ -531,9 +540,10 @@ namespace PCLock
         static List<Question> BuildChinesePool(int[] grades, int total)
         {
             List<WordEntry> pool = FilterGrades(chinese, grades);
+            if (pool.Count == 0) pool = new List<WordEntry>(chinese);   // 选中年级无词条：用全题库
+            if (pool.Count == 0) return MakeMathBatch(grades, total);   // 词库整体为空：退出口算题
             Shuffle(pool);
             List<Question> q = new List<Question>();
-            if (pool.Count == 0) return q;
             for (int i = 0; i < total; i++)
             {
                 WordEntry e = (i < pool.Count) ? pool[i] : pool[rnd.Next(pool.Count)];
@@ -545,9 +555,10 @@ namespace PCLock
         static List<Question> BuildEnglishPool(int[] grades, int total)
         {
             List<EnglishEntry> pool = FilterGrades(english, grades);
+            if (pool.Count == 0) pool = new List<EnglishEntry>(english);  // 选中年级无词条：用全题库
+            if (pool.Count == 0) return MakeMathBatch(grades, total);     // 词库整体为空：退出口算题
             Shuffle(pool);
             List<Question> q = new List<Question>();
-            if (pool.Count == 0) return q;
             for (int i = 0; i < total; i++)
             {
                 EnglishEntry e = (i < pool.Count) ? pool[i] : pool[rnd.Next(pool.Count)];
@@ -579,19 +590,25 @@ namespace PCLock
             q.Subject = Subject.Chinese; q.Grade = e.Grade; q.Type = QType.ChinesePinyin;
             q.Prompt = e.Word; q.Explanation = e.Meaning; q.Answer = -1;
             List<string> opts = new List<string>(); opts.Add(e.Pinyin);
-            List<WordEntry> pool = FilterGrade(chinese, e.Grade);
-            Shuffle(pool);
-            foreach (var p in pool)
-            {
-                if (p == e) continue;
-                if (opts.Count >= 4) break;
-                if (p.Pinyin != e.Pinyin && !opts.Contains(p.Pinyin)) opts.Add(p.Pinyin);
-            }
-            while (opts.Count < 4) opts.Add(e.Pinyin + "?");
+            AddChineseDistractors(opts, FilterGrade(chinese, e.Grade), e);
+            if (opts.Count < 4) AddChineseDistractors(opts, new List<WordEntry>(chinese), e);  // 本年级干扰项不足：从全题库补
+            if (opts.Count < 2) return MakeMath(e.Grade);   // 词库退化（凑不出 1 个干扰项）：退出口算题，避免占位符或唯一选项
             Shuffle(opts);
             q.Options = opts.ToArray();
             q.CorrectIndex = IndexOfStr(q.Options, e.Pinyin);
             return q;
+        }
+
+        // 从 pool 中补干扰项（与正确项不同、互不重复），补满 4 个即止
+        static void AddChineseDistractors(List<string> opts, List<WordEntry> pool, WordEntry self)
+        {
+            Shuffle(pool);
+            foreach (var p in pool)
+            {
+                if (opts.Count >= 4) break;
+                if (p == self) continue;
+                if (p.Pinyin != self.Pinyin && !opts.Contains(p.Pinyin)) opts.Add(p.Pinyin);
+            }
         }
 
         static Question BuildEnglish(EnglishEntry e)
@@ -601,31 +618,26 @@ namespace PCLock
             q.Answer = -1; q.Explanation = "";
             bool wordToZh = rnd.Next(2) == 0;
             List<string> opts = new List<string>();
-            if (wordToZh)
-            {
-                q.Prompt = e.En; opts.Add(e.Zh);
-                AddEnglishDistractors(opts, english, e.Grade, e, true);
-                while (opts.Count < 4) opts.Add(e.Zh + "?");
-                Shuffle(opts); q.Options = opts.ToArray(); q.CorrectIndex = IndexOfStr(q.Options, e.Zh);
-            }
-            else
-            {
-                q.Prompt = e.Zh; opts.Add(e.En);
-                AddEnglishDistractors(opts, english, e.Grade, e, false);
-                while (opts.Count < 4) opts.Add(e.En + "?");
-                Shuffle(opts); q.Options = opts.ToArray(); q.CorrectIndex = IndexOfStr(q.Options, e.En);
-            }
+            string correct;
+            if (wordToZh) { q.Prompt = e.En; opts.Add(e.Zh); correct = e.Zh; }
+            else { q.Prompt = e.Zh; opts.Add(e.En); correct = e.En; }
+            AddEnglishDistractors(opts, FilterGrade(english, e.Grade), e, wordToZh);
+            if (opts.Count < 4) AddEnglishDistractors(opts, new List<EnglishEntry>(english), e, wordToZh);  // 本年级干扰项不足：从全题库补
+            if (opts.Count < 2) return MakeMath(e.Grade);   // 词库退化（凑不出 1 个干扰项）：退出口算题，避免占位符或唯一选项
+            Shuffle(opts);
+            q.Options = opts.ToArray();
+            q.CorrectIndex = IndexOfStr(q.Options, correct);
             return q;
         }
 
-        static void AddEnglishDistractors(List<string> opts, List<EnglishEntry> pool, int grade, EnglishEntry self, bool useZh)
+        // 从候选池 pool 中补干扰项（与正确项不同、互不重复），补满 4 个即止
+        static void AddEnglishDistractors(List<string> opts, List<EnglishEntry> pool, EnglishEntry self, bool useZh)
         {
-            List<EnglishEntry> g = FilterGrade(pool, grade);
-            Shuffle(g);
-            foreach (var p in g)
+            Shuffle(pool);
+            foreach (var p in pool)
             {
-                if (p == self) continue;
                 if (opts.Count >= 4) break;
+                if (p == self) continue;
                 string v = useZh ? p.Zh : p.En;
                 string selfv = useZh ? self.Zh : self.En;
                 if (v != selfv && !opts.Contains(v)) opts.Add(v);

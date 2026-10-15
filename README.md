@@ -32,7 +32,7 @@
 `build.bat` 优先调用 **.NET Framework 4.x** 自带的编译器，产物 `PCLock.exe` 面向 .NET 4.0 运行时，在装有 .NET 4.0+ 的 Win7 上即可运行（如系统未带 4.x，请先安装 .NET Framework 4.x）。
 产物目录同时包含 `PCLock.exe.config`（声明支持的运行时），须与 `PCLock.exe` 放在同一目录。
 构建前会自动生成 `src\_Version.cs`（版本号/commit，脚本为 `gen_version.bat`，VS 构建经 `PCLock.csproj` 调用同一脚本）。
-单元测试：双击 `tests\run.bat`（同样基于系统自带 `csc`，零依赖），覆盖时段解析与题库组合（15 项）。
+单元测试：双击 `tests\run.bat`（同样基于系统自带 `csc`，零依赖），覆盖时段解析、题库组合与题库边界、PIN 哈希、数学答案一致性、断电折算（53 项）。
 
 ## 安装（只需一次）
 
@@ -82,19 +82,27 @@ reg delete "HKLM\SOFTWARE\PCLock" /f
 
 ```
 pclock/
-├── build.bat          一键编译
+├── build.bat          一键编译（src\*.cs 通配收集，新增 .cs 无需改脚本）
 ├── app.manifest       要求管理员权限运行
 └── src/
     ├── Program.cs     入口：单实例控制、--watchdog 模式分发、日志滚动
-    ├── App.cs         主逻辑：托盘、倒计时、锁屏/解锁、自启、退出/卸载、休眠/关机不扣时长
+    ├── App.cs         主逻辑核心：字段/构造/倒计时/锁屏调度/离线折算（partial class）
+    ├── App.Tray.cs    托盘图标与家长设置入口（ShowSettings）
+    ├── App.Guard.cs   看门狗守护：GuardLoop / EnsureWatchdog / WaitWatchdogExit
+    ├── App.Power.cs   关机/睡眠事件订阅与处理
+    ├── App.Shutdown.cs 退出与卸载（含等待看门狗退出后删目录）
+    ├── StartupManager.cs 开机自启：计划任务优先，HKLM Run 回退
     ├── Store.cs       注册表持久化（时长/年级/学科/PIN/锁屏标记/剩余秒数）
     ├── Questions.cs   题库引擎：题型定义、数学按年级算法生成、抽题 API
     ├── ChineseData.cs 语文题库（1-6 年级：词语+拼音+释义）
     ├── EnglishData.cs 英语题库（1-6 年级：单词↔汉语，四选一）
     ├── Protection.cs  进程 DACL 自保护（拒绝结束/写 DAC/挂起）、DisableTaskMgr 策略
     ├── Watchdog.cs    看门狗：主程序被杀则拉起并保持锁屏
-    ├── LockForm.cs    全屏锁屏界面 + 键盘钩子 + 多题型答题/PIN 解锁
-    └── SettingsForm.cs 家长设置（时长/年级/学科）+ PIN 验证对话框
+    ├── LockForm.cs    全屏锁屏界面 + 多题型答题/PIN 解锁
+    ├── LowLevelHook.cs 低级键盘钩子：屏蔽 Win/Alt+Tab/Ctrl+Esc 等
+    ├── PinDialog.cs   通用密码验证小对话框（家长PIN / 卸载密码共用）
+    ├── AboutForm.cs   关于窗口
+    └── SettingsForm.cs 家长设置（时长/年级/学科/时段/PIN）
 ```
 
 ## 本副本修复记录（相对上游）
@@ -192,7 +200,7 @@ pclock/
 
 #### 每日可用时段
 - **位置**：家长设置窗口「**每日可用时段（按用户）**」文本框。
-- **格式**：`08:00-12:00;14:00-21:00`（每段 `起始-结束`，多个时段用**分号/逗号**分隔；**留空 = 全天可用**）。
+- **格式**：`08:00-12:00;14:00-21:00`（每段 `起始-结束`，多个时段用**分号/逗号**分隔；**留空 = 全天可用**；起始大于结束时按**跨午夜**处理，如 `22:00-06:00` 表示仅夜间可用）。
 - **效果**：
   - 不在允许时段内时，电脑会被**强制锁屏（硬锁）**——不计时、不扣时长，孩子无法靠答题解锁。
   - 锁屏界面仅保留「家长入口」PIN 解锁（家长可破例放行）。
@@ -206,12 +214,16 @@ pclock/
 
 工程自带一个**零依赖的轻量测试框架**（`tests/TUnit.cs`：`[Test]` 特性 + `Assert` + 自动发现运行器），用系统自带的 `csc` 编译即可运行，无需 NuGet / dotnet SDK。
 
-- 运行：双击 `tests/run.bat`，或在项目根目录执行它。
-- 覆盖范围（确定性纯逻辑）：
-  - `WindowTests`：每日时段解析（空=全天、段间空隙、闭区间边界、逗号分隔、非法段忽略）。
-  - `QuestionTests`：混合模式每科 ≤4、两科模式每科 ≥3、单科模式全为同科、每批 10 题。
+- 运行：双击 `tests/run.bat`，或在项目根目录执行它。CI 中由 `.github/workflows/tests.yml` 在每次 push/PR 自动执行（单测 + `build.bat Release` 双通道）。
+- 覆盖范围（确定性纯逻辑，共 53 项）：
+  - `WindowTests`（11 项）：每日时段解析（空=全天、段间空隙、闭区间边界、逗号分隔、非法段忽略、跨午夜时段环绕判断）。
+  - `QuestionTests`（7 项）：混合模式每科 ≤4、两科模式每科 ≥3、单科模式全为同科、每批 10 题。
+  - `QuestionBankEdgeTests`（4 项）：题库边界（反射注入小型/退化/缺年级词库）——选项 2-4 个、互不重复、无"拼音?"占位符、CorrectIndex 有效、题量恒为 10。
+  - `HashTests`（16 项）：PIN 哈希纯函数——新格式往返、盐随机、结构合法、错误 PIN/空串/畸形字符串/迭代越界全部拒绝、旧格式与独立 SHA256 实现比对一致、篡改末位拒绝、PBKDF2 成本健全性（见 `tests/HashTests.cs`）。
+  - `MathAnswerTests`（3 项）：数学题答案一致性——用独立实现的有理数求值器复算 Gen1-Gen6 全部题型（四则/括号/小数/分数/百分数/中文题干），每题标称答案必须与复算一致，复算覆盖率要求 100%。
+  - `OfflineDeductTests`（12 项）：硬断电离线折算纯函数——正常退出/时钟回拨/阈值边界不扣、向上取整、扣到 0、超大间隔不溢出。
 - 不覆盖的部分（需 Windows 上手动验证）：注册表持久化、锁屏 UI、自保护等。
-- 新增测试：在 `tests/UnitTests.cs` 里加 `[Test]` 方法，运行器会自动发现并执行。
+- 新增测试：在 `tests/` 下任意 `*.cs` 里加 `[Test]` 方法，并在 `tests/run.bat` 的编译清单登记该文件、在 `tests/UnitTests.cs` 的 `Program.Main` 注册测试类，运行器会自动发现并执行。
 
 ---
 
@@ -225,6 +237,40 @@ pclock/
 ---
 
 ## 更新日志
+
+### 2026-10-15 — M4 实测验证批（详见 `docs/架构规划与任务分工-2026-10-14.md` 第九节）
+
+1. **完成 M1/M2/M3 三批改动的真实编译与单测执行**（此前受执行环境限制仅能静态复查）：`tests\run.bat` 53/53 通过；`build.bat Release` / `build.bat Debug` 双配置编译成功。真机手动回归清单固化为 `docs/回归验证清单.md`（自动化 5 项 + 手动 16 项）。
+2. **修复 `build.bat` 通配 bug**（M1 引入）：`for %%f in (src\*.cs)` 的循环变量已含 `src\` 目录前缀，原写法拼出 `src\src\*.cs`，全部源文件找不到（CS2001）——M1 的"通配化"实际不可用，本次实测暴露后修复；失败分支的 `pause` 增加 CI 守卫。
+3. **修复 `tests\run.bat` 退出码恒为 0**（CI 假绿级缺陷，M3 入库时就存在）：`if exist (…)` 块内 `%ERRORLEVEL%`/`%RC%` 为解析期展开，测试失败也退出 0。改用 `EnableDelayedExpansion` + `!ERRORLEVEL!`，已实测失败场景返回 1。
+4. **修复两处 M2 拆分引入的编译错误**：`Questions.cs` `BuildChinesePool` 丢失 `List<Question> q` 声明（CS0103）；`App.Power.cs` 漏带 `using System.Windows.Forms;`（CS0246，`ApplicationContext`）。
+5. **数学题题干约定测试修正**：百分题 `= ?%`（% 为单位提示）与圆题 `？(π取3.14)`（取值约束备注）为有意设计的合法后缀；测试从"必须以问号结尾"改为"问号位于结尾附近"，题干文本不变。
+
+### 2026-10-14 — M3 测试与工程化批（详见 `docs/架构规划与任务分工-2026-10-14.md`）
+
+1. **补回哈希单元测试 16 项**（`tests/HashTests.cs`）：2026-10-05 更新日志声称"哈希纯函数单元测试 16 项全部通过"，但该测试实际已丢失（测试目录中不存在）。本次按原声称范围重新实现：新格式往返、盐随机、结构合法、错误 PIN/空串/畸形字符串/迭代次数越界全部拒绝、旧格式与独立 SHA256 实现字节级比对一致、篡改哈希末位拒绝、PBKDF2 成本健全性（单次验证耗时下界断言，防迭代次数被削弱）。
+2. **数学题答案一致性测试**（`tests/MathAnswerTests.cs`）：用独立实现的有理数表达式求值器（支持四则/括号/小数/分数/百分数/中文题干）复算 Gen1-Gen6 每一道题，标称答案必须与复算一致；复算覆盖率要求 100%，未覆盖的新题型会直接失败而非悄悄跳过。答案错误会直接冤枉孩子，属于最高优先级正确性问题。
+3. **`DeductOffline` 纯函数化**（`Store.cs`）：断电离线折算规则提取为 `Store.DeductOffline(remaining, lastSeenUtcTicks, nowUtcTicks)` 纯函数 + `OfflineDeductResult`，`App.DeductOffline()` 只做接线与日志；30 秒阈值提取为 `Constants.OfflineDeductThresholdSec`；新增 12 项边界单测（阈值边界、向上取整、扣到 0、时钟回拨、超大间隔不溢出）。
+4. **修复 M1 引入的测试编译回归**：`Store.cs` 的日志原为直接调用 `Program.Log`，但测试构建（`tests\run.bat`）不编译 `src/Program.cs`，会导致测试编译失败（CS0117）。现改为可注入日志 sink（`Store.SetLogSink`，由 `Program.Main` 启动时注入）——同时消除了核心层对入口类的依赖，未注入时自动静默（单测场景）。
+5. **CI 入库**（`.github/workflows/tests.yml`）：每次 push/PR 自动执行 53 项单测 + `build.bat Release` 编译验证（打 tag 的发布构建仍走 `release.yml`，不重复）。
+6. **测试规模**：22 → 53 项；README 覆盖范围、运行方式同步。
+
+### 2026-10-14 — M1 缺陷修复批（架构评审后续，详见 `docs/架构规划与任务分工-2026-10-14.md`）
+
+1. **注册表读写加固**（`Store.cs`）：全部 Get/Set 增加异常保护与日志，运行中注册表键被删除/权限变化时不再抛到 UI 线程；`App.OnTick` 增加"连续 3 次持久化失败即进入安全锁屏"的双保险，防止计时状态丢失后被反复重启绕过。
+2. **卸载竞态修复**（`App.cs`）：卸载时先等待看门狗进程退出（轮询 `Local\PCLock_Watchdog` 互斥体消失，上限 6 秒）再删除程序目录，避免文件占用导致 `rd /s /q` 失败、残留进程与文件。
+3. **跨午夜时段支持**（`Store.cs`）：每日可用时段起始大于结束时（如 `22:00-06:00`）按环绕判断。修复前 `a<=now<=b` 恒为 false，家长填写跨午夜时段会导致**全天硬锁**；新增 3 项单元测试（测试总数 15 → 18）。
+4. **PIN 验证异步化**（`SettingsForm.cs`）：设置入口的 PIN 对话框改后台线程验证 PBKDF2，与锁屏界面家长入口一致，消除约 0.2 秒界面卡顿。
+5. **看门狗启动空窗修复**（`App.cs`）：主程序构造时立即 `EnsureWatchdog()`，不再依赖 GuardLoop 首轮 3 秒轮询才发现并拉起看门狗。
+6. **静默异常补日志**（`App.cs` / `Protection.cs` / `Program.cs`）：FlushUsed、电源事件、DACL/策略设置、图标加载等失败均写入 `err.txt`，"防护没生效"类问题有排查线索。
+7. **构建脚本通配化**（`build.bat`）：源文件清单由硬编码 12 个文件改为 `src\*.cs` 通配收集，新增/移动 .cs 不再需要改脚本（`tests/run.bat` 保留显式核心文件清单并注释原因）。
+
+### 2026-10-14 — M2 重构批（UI/App 拆分 + 题库边界修复，详见 `docs/架构规划与任务分工-2026-10-14.md`）
+
+1. **App.cs 按职责拆分**（行为零变化，partial class）：拆出 `App.Tray.cs`（托盘/设置入口）、`App.Guard.cs`（看门狗守护三件套）、`App.Power.cs`（关机/睡眠事件）、`App.Shutdown.cs`（退出/卸载）；开机自启提取为独立静态类 `StartupManager.cs`。App.cs 从约 570 行降至约 330 行，只保留计时/锁屏核心。
+2. **UI 拆分**：`PinDialog` / `AboutForm` / `LowLevelHook` 各自独立文件；`SettingsForm` 巨型构造函数拆为 9 个 builder 方法（菜单/用户/时长/年级科目/时段/PIN/卸载密码/会话/操作按钮）+ `RefreshUserControls`；`LockForm` 构造函数拆为 5 个 builder（标题/答题/家长入口/选项按钮/核心控件）。控件添加顺序与行为完全保持原样。
+3. **题库边界修复**（`Questions.cs`）：① 干扰项不足时不再插入带 `?` 的占位符选项——改为本年级补完后再从全题库补配，词库退化（凑不出 1 个干扰项）时该题退出口算题；② 选中年级/科目在词库中无词条时不再返回空批或抛异常（`rnd.Next(0)`），改为用全题库、必要时退出口算题，题量恒为设定值；③ 单科路径补足题量（原先只取 `min(词条数, 题数)` 会导致总题数不足）。新增 4 项边界测试（测试总数 18 → 22）。
+4. **文档同步**：README 项目结构、测试覆盖范围、更新日志同步至 M2。
 
 ### 2026-10-13 — 移除渐进遮罩（最后 5 分钟预告）
 

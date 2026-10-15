@@ -5,98 +5,6 @@ using System.Windows.Forms;
 
 namespace PCLock
 {
-    /// <summary>通用密码验证小对话框（家长PIN / 卸载密码共用）</summary>
-    public class PinDialog : Form
-    {
-        // 跨对话框实例的全局冷却：反复打开→失败→关闭→重开无法绕过
-        static DateTime cooldownUntil = DateTime.MinValue;
-
-        public PinDialog(string title, string prompt, Func<string, bool> verify)
-        {
-            Text = title;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            StartPosition = FormStartPosition.CenterScreen;
-            ShowInTaskbar = false;
-            ClientSize = new Size(330, 135);
-
-            Label l = new Label();
-            l.Text = prompt;
-            l.AutoSize = true;
-            l.Location = new Point(16, 15);
-
-            TextBox box = new TextBox();
-            box.Location = new Point(16, 42);
-            box.Width = 290;
-            box.PasswordChar = '*';
-            box.MaxLength = Constants.PinMaxLength;
-            box.KeyPress += delegate(object s, KeyPressEventArgs e)
-            {
-                // 与锁屏界面输入框保持一致：PIN 只允许数字
-                if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar)) e.Handled = true;
-            };
-
-            Label err = new Label();
-            err.ForeColor = Color.Firebrick;
-            err.AutoSize = true;
-            err.Location = new Point(16, 72);
-
-            Button ok = new Button();
-            ok.Text = "确定";
-            ok.Location = new Point(150, 98);
-            ok.Size = new Size(76, 28);
-
-            Button cancel = new Button();
-            cancel.Text = "取消";
-            cancel.Location = new Point(230, 98);
-            cancel.Size = new Size(76, 28);
-
-            int fails = 0;
-            ok.Click += delegate
-            {
-                // 全局冷却：上一次 5 连败后 30 秒内所有 PIN 对话框均拒绝输入
-                if (DateTime.Now < cooldownUntil)
-                {
-                    int left = (int)Math.Ceiling((cooldownUntil - DateTime.Now).TotalSeconds);
-                    err.Text = "尝试次数过多，请 " + left + " 秒后再试";
-                    box.Text = "";
-                    return;
-                }
-                if (verify(box.Text))
-                {
-                    DialogResult = DialogResult.OK;
-                    Close();
-                }
-                else
-                {
-                    fails++;
-                    box.Text = "";
-                    box.Focus();
-                    if (fails >= Constants.PinMaxFails)
-                    {
-                        cooldownUntil = DateTime.Now.AddSeconds(Constants.PinCooldownSec);
-                        DialogResult = DialogResult.Cancel;
-                        Close();
-                    }
-                    else
-                    {
-                        err.Text = "密码错误（还可尝试 " + (Constants.PinMaxFails - fails) + " 次）";
-                    }
-                }
-            };
-
-            AcceptButton = ok;
-            CancelButton = cancel;
-            Controls.Add(l);
-            Controls.Add(box);
-            Controls.Add(err);
-            Controls.Add(ok);
-            Controls.Add(cancel);
-            Program.FlattenButtons(this);
-        }
-    }
-
     /// <summary>家长设置窗口（进入前已验证家长PIN）</summary>
     public class SettingsForm : Form
     {
@@ -108,53 +16,115 @@ namespace PCLock
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
             ShowInTaskbar = false;
+            // 置顶：锁屏全屏且 TopMost，家长设置必须浮于其上，否则被压到底层无法操作
+            TopMost = true;
             AutoScroll = true;
             ClientSize = new Size(480, 600);
             this.Icon = Program.LoadAppIcon();
 
             // 顶部菜单：关于
+            MenuStrip menu = BuildMenuStrip();
+            Controls.Add(menu);
+
+            // ---- 配置对象（按 Windows 用户分别限制）----
+            ComboBox cbUser;
+            Controls.Add(BuildUserGroup(out cbUser));
+
+            // ---- 使用时长（按用户分别）----
+            RadioButton[] rbs;
+            Controls.Add(BuildDurationGroup(cbUser, out rbs));
+
+            // ---- 锁屏答题：年级 / 科目（可多选，按用户）----
+            CheckBox[] gcb, scb;
+            Controls.Add(BuildQuizGroup(cbUser, out gcb, out scb));
+
+            // ---- 每日可用时段（按用户分别）----
+            TextBox txtWin;
+            Controls.Add(BuildWindowGroup(cbUser, out txtWin));
+
+            // ---- 修改家长 PIN ----
+            Controls.Add(BuildPinGroup());
+
+            // ---- 修改卸载密码 ----
+            Controls.Add(BuildUninstallPinGroup());
+
+            // ---- 本次会话：今日已用 / 暂停 / 加时（按用户）----
+            Label lblUsed;
+            Controls.Add(BuildSessionGroup(out lblUsed));
+
+            // ---- 切换用户时刷新时长/时段/已用 ----
+            cbUser.SelectedIndexChanged += delegate { RefreshUserControls(cbUser, rbs, txtWin, lblUsed, gcb, scb); };
+            RefreshUserControls(cbUser, rbs, txtWin, lblUsed, gcb, scb);
+
+            // ---- 操作按钮 ----
+            BuildActionButtons();
+
+            // 将菜单以外的内容整体放入可滚动面板，面板位于菜单下方，避免与菜单重叠
+            Panel content = new Panel();
+            content.Location = new Point(0, menu.Height);
+            content.Size = new Size(ClientSize.Width, ClientSize.Height - menu.Height);
+            content.AutoScroll = true;
+            for (int i = Controls.Count - 1; i >= 0; i--)
+            {
+                Control c = Controls[i];
+                if (c is MenuStrip) continue;
+                Controls.RemoveAt(i);
+                content.Controls.Add(c);
+            }
+            Controls.Add(content);
+            this.AutoScroll = false;
+            menu.BringToFront();
+            Program.FlattenButtons(this);
+        }
+
+        MenuStrip BuildMenuStrip()
+        {
             MenuStrip menu = new MenuStrip();
             ToolStripMenuItem miAbout = new ToolStripMenuItem("关于");
             miAbout.Click += delegate { using (AboutForm af = new AboutForm()) af.ShowDialog(this); };
             menu.Items.Add(miAbout);
             menu.Dock = DockStyle.Top;
             this.MainMenuStrip = menu;
-            Controls.Add(menu);
+            return menu;
+        }
 
-            // ---- 配置对象（按 Windows 用户分别限制）----
+        GroupBox BuildUserGroup(out ComboBox cbUser)
+        {
             GroupBox guUser = new GroupBox();
             guUser.Text = "配置对象（Windows 用户）";
             guUser.Location = new Point(15, 15);
             guUser.Size = new Size(440, 55);
             Label ulbl = NewLbl("为以下用户设置：", 15, 22);
             guUser.Controls.Add(ulbl);
-            ComboBox cbUser = new ComboBox();
-            cbUser.Location = new Point(150, 20);
-            cbUser.Size = new Size(200, 24);
-            cbUser.DropDownStyle = ComboBoxStyle.DropDownList;
-            cbUser.Items.AddRange(Store.ListUsers());
-            cbUser.SelectedIndex = 0;
-            guUser.Controls.Add(cbUser);
-            Controls.Add(guUser);
+            ComboBox cb = new ComboBox();
+            cb.Location = new Point(150, 20);
+            cb.Size = new Size(200, 24);
+            cb.DropDownStyle = ComboBoxStyle.DropDownList;
+            cb.Items.AddRange(Store.ListUsers());
+            cb.SelectedIndex = 0;
+            guUser.Controls.Add(cb);
+            cbUser = cb;
+            return guUser;
+        }
 
-            // ---- 使用时长（按用户分别）----
+        GroupBox BuildDurationGroup(ComboBox cbUser, out RadioButton[] rbs)
+        {
             GroupBox gb = new GroupBox();
             gb.Text = "每次可用时长（按用户）";
             gb.Location = new Point(15, 80);
             gb.Size = new Size(440, 90);
             int[] mins = Constants.AllowedDurations;
-            RadioButton[] rbs = new RadioButton[mins.Length];
+            RadioButton[] arr = new RadioButton[mins.Length];
             for (int i = 0; i < mins.Length; i++)
             {
-                rbs[i] = new RadioButton();
-                rbs[i].Text = mins[i] + "分";
-                rbs[i].AutoSize = true;
-                rbs[i].Location = new Point(15 + i * 70, 25);
-                rbs[i].Tag = mins[i];
-                gb.Controls.Add(rbs[i]);
+                arr[i] = new RadioButton();
+                arr[i].Text = mins[i] + "分";
+                arr[i].AutoSize = true;
+                arr[i].Location = new Point(15 + i * 70, 25);
+                arr[i].Tag = mins[i];
+                gb.Controls.Add(arr[i]);
             }
-            Controls.Add(gb);
-            RadioButton[] rbRef = rbs;
+            rbs = arr;
 
             Button saveDur = new Button();
             saveDur.Text = "保存时长";
@@ -162,12 +132,13 @@ namespace PCLock
             saveDur.Size = new Size(100, 30);
             saveDur.Click += delegate
             {
-                for (int i = 0; i < rbRef.Length; i++)
+                // 注意：匿名方法内不能引用外层 out 参数，这里捕获局部数组 arr
+                for (int i = 0; i < arr.Length; i++)
                 {
-                    if (rbRef[i].Checked)
+                    if (arr[i].Checked)
                     {
                         string u = cbUser.Text;
-                        Store.SetDurationMinutes(u, (int)rbRef[i].Tag);
+                        Store.SetDurationMinutes(u, (int)arr[i].Tag);
                         if (u == Store.GetCurrentUser())
                         {
                             if (App.Instance != null) App.Instance.ResetRemaining();
@@ -184,40 +155,44 @@ namespace PCLock
                 }
             };
             gb.Controls.Add(saveDur);
+            return gb;
+        }
 
-            // ---- 锁屏答题：年级 / 科目（可多选，按用户）----
+        GroupBox BuildQuizGroup(ComboBox cbUser, out CheckBox[] gcb, out CheckBox[] scb)
+        {
             GroupBox gq = new GroupBox();
             gq.Text = "锁屏答题（年级 / 科目，可多选）";
             gq.Location = new Point(15, 180);
             gq.Size = new Size(440, 122);
-            Controls.Add(gq);
 
             Label gl1 = NewLbl("年级：", 15, 24);
             gq.Controls.Add(gl1);
-            CheckBox[] gcb = new CheckBox[Constants.AllowedGrades.Length];
+            CheckBox[] gs = new CheckBox[Constants.AllowedGrades.Length];
             for (int i = 0; i < Constants.AllowedGrades.Length; i++)
             {
-                gcb[i] = new CheckBox();
-                gcb[i].Text = Constants.AllowedGrades[i] + "年级";
-                gcb[i].AutoSize = true;
-                gcb[i].Location = new Point(70 + i * 62, 22);
-                gcb[i].Tag = Constants.AllowedGrades[i];
-                gq.Controls.Add(gcb[i]);
+                gs[i] = new CheckBox();
+                gs[i].Text = Constants.AllowedGrades[i] + "年级";
+                gs[i].AutoSize = true;
+                gs[i].Location = new Point(70 + i * 62, 22);
+                gs[i].Tag = Constants.AllowedGrades[i];
+                gq.Controls.Add(gs[i]);
             }
+            gcb = gs;
             Label gl2 = NewLbl("科目：", 15, 62);
             gq.Controls.Add(gl2);
             int[] subjVals = new int[] { 1, 2, 3 };
             string[] subjNames = new string[] { "语文", "数学", "英语" };
-            CheckBox[] scb = new CheckBox[3];
+            CheckBox[] ss = new CheckBox[3];
             for (int i = 0; i < 3; i++)
             {
-                scb[i] = new CheckBox();
-                scb[i].Text = subjNames[i];
-                scb[i].AutoSize = true;
-                scb[i].Location = new Point(70 + i * 72, 60);
-                scb[i].Tag = subjVals[i];
-                gq.Controls.Add(scb[i]);
+                ss[i] = new CheckBox();
+                ss[i].Text = subjNames[i];
+                ss[i].AutoSize = true;
+                ss[i].Location = new Point(70 + i * 72, 60);
+                ss[i].Tag = subjVals[i];
+                gq.Controls.Add(ss[i]);
             }
+            scb = ss;
             Button saveEdu = new Button();
             saveEdu.Text = "保存设置";
             saveEdu.Location = new Point(330, 86);
@@ -225,44 +200,50 @@ namespace PCLock
             saveEdu.Click += delegate
             {
                 string u = cbUser.Text;
-                List<int> gs = new List<int>();
-                for (int i = 0; i < gcb.Length; i++) if (gcb[i].Checked) gs.Add((int)gcb[i].Tag);
-                List<int> ss = new List<int>();
-                for (int i = 0; i < scb.Length; i++) if (scb[i].Checked) ss.Add((int)scb[i].Tag);
-                if (gs.Count == 0) { MessageBox.Show(this, "请至少选择一个年级。", "电脑锁"); return; }
-                if (ss.Count == 0) { MessageBox.Show(this, "请至少选择一个科目。", "电脑锁"); return; }
-                Store.SetGrades(u, gs.ToArray());
-                Store.SetSubjects(u, ss.ToArray());
+                List<int> gg = new List<int>();
+                for (int i = 0; i < gs.Length; i++) if (gs[i].Checked) gg.Add((int)gs[i].Tag);
+                List<int> s2 = new List<int>();
+                for (int i = 0; i < ss.Length; i++) if (ss[i].Checked) s2.Add((int)ss[i].Tag);
+                if (gg.Count == 0) { MessageBox.Show(this, "请至少选择一个年级。", "电脑锁"); return; }
+                if (s2.Count == 0) { MessageBox.Show(this, "请至少选择一个科目。", "电脑锁"); return; }
+                Store.SetGrades(u, gg.ToArray());
+                Store.SetSubjects(u, s2.ToArray());
                 MessageBox.Show(this, "已为「" + u + "」保存。下次该用户锁屏生效（当前锁屏不中断）。", "电脑锁",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             };
             gq.Controls.Add(saveEdu);
+            return gq;
+        }
 
-            // ---- 每日可用时段（按用户分别）----
+        GroupBox BuildWindowGroup(ComboBox cbUser, out TextBox txtWin)
+        {
             GroupBox gw = new GroupBox();
             gw.Text = "每日可用时段（按用户）";
             gw.Location = new Point(15, 300);
             gw.Size = new Size(440, 100);
-            Label wtip = NewLbl("格式：08:00-12:00;14:00-21:00（分号分隔多段，留空=全天可用）", 15, 22);
+            Label wtip = NewLbl("格式：08:00-12:00;14:00-21:00（分号分隔多段，留空=全天可用；支持跨午夜如 22:00-06:00）", 15, 22);
             gw.Controls.Add(wtip);
-            TextBox txtWin = new TextBox();
-            txtWin.Location = new Point(15, 48);
-            txtWin.Size = new Size(410, 24);
-            gw.Controls.Add(txtWin);
+            TextBox tb = new TextBox();
+            tb.Location = new Point(15, 48);
+            tb.Size = new Size(410, 24);
+            gw.Controls.Add(tb);
+            txtWin = tb;
             Button saveWin = new Button();
             saveWin.Text = "保存时段";
             saveWin.Location = new Point(325, 74);
             saveWin.Size = new Size(105, 28);
             saveWin.Click += delegate
             {
-                Store.SetWindow(cbUser.Text, txtWin.Text.Trim());
+                Store.SetWindow(cbUser.Text, tb.Text.Trim());
                 MessageBox.Show(this, "已为「" + cbUser.Text + "」保存可用时段。", "电脑锁",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             };
             gw.Controls.Add(saveWin);
-            Controls.Add(gw);
+            return gw;
+        }
 
-            // ---- 修改家长 PIN ----
+        GroupBox BuildPinGroup()
+        {
             GroupBox gp = new GroupBox();
             gp.Text = "修改家长 PIN（锁屏界面\"家长入口\"用）";
             gp.Location = new Point(15, 410);
@@ -298,9 +279,11 @@ namespace PCLock
             gp.Controls.Add(pl2);
             gp.Controls.Add(pin2);
             gp.Controls.Add(btnPin);
-            Controls.Add(gp);
+            return gp;
+        }
 
-            // ---- 修改卸载密码 ----
+        GroupBox BuildUninstallPinGroup()
+        {
             GroupBox gu = new GroupBox();
             gu.Text = "修改卸载密码（卸载本程序时必须输入）";
             gu.Location = new Point(15, 510);
@@ -336,15 +319,17 @@ namespace PCLock
             gu.Controls.Add(ul2);
             gu.Controls.Add(up2);
             gu.Controls.Add(btnUn);
-            Controls.Add(gu);
+            return gu;
+        }
 
-            // ---- 本次会话：今日已用 / 暂停 / 加时（按用户）----
+        GroupBox BuildSessionGroup(out Label lblUsed)
+        {
             GroupBox guOps = new GroupBox();
             guOps.Text = "本次会话（今日已用 / 暂停 / 加时）";
             guOps.Location = new Point(15, 610);
             guOps.Size = new Size(440, 78);
-            Label lblUsed = NewLbl("今日已用：计算中…", 12, 20);
-            lblUsed.ForeColor = Color.Gray;
+            Label lu = NewLbl("今日已用：计算中…", 12, 20);
+            lu.ForeColor = Color.Gray;
             Button btnPause = new Button();
             btnPause.Text = "暂停计时";
             btnPause.Location = new Point(12, 44);
@@ -377,30 +362,15 @@ namespace PCLock
                 MessageBox.Show(this, "已为本次会话增加 15 分钟使用时间。", "电脑锁",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             };
-            guOps.Controls.Add(lblUsed);
+            guOps.Controls.Add(lu);
             guOps.Controls.Add(btnPause);
             guOps.Controls.Add(btnAdd);
-            Controls.Add(guOps);
+            lblUsed = lu;
+            return guOps;
+        }
 
-            // ---- 切换用户时刷新时长/时段/已用 ----
-            Action RefreshUser = delegate
-            {
-                string u = cbUser.Text;
-                int dur = Store.GetDurationMinutes(u);
-                for (int i = 0; i < rbs.Length; i++) rbs[i].Checked = ((int)rbs[i].Tag == dur);
-                txtWin.Text = Store.GetWindow(u);
-                int used = Store.GetUsedToday(u);
-                lblUsed.Text = "「" + u + "」今日已用：" + (used / 60) + " 分 " + (used % 60) + " 秒";
-                // 锁屏答题：年级 / 科目（多选）按用户刷新
-                int[] gsel = Store.GetGrades(u);
-                for (int i = 0; i < gcb.Length; i++) gcb[i].Checked = Array.IndexOf(gsel, (int)gcb[i].Tag) >= 0;
-                int[] ssel = Store.GetSubjects(u);
-                for (int i = 0; i < scb.Length; i++) scb[i].Checked = Array.IndexOf(ssel, (int)scb[i].Tag) >= 0;
-            };
-            cbUser.SelectedIndexChanged += delegate { RefreshUser(); };
-            RefreshUser();
-
-            // ---- 操作按钮 ----
+        void BuildActionButtons()
+        {
             Button btnLock = new Button();
             btnLock.Text = "立即锁定";
             btnLock.Location = new Point(15, 705);
@@ -465,23 +435,23 @@ namespace PCLock
             Controls.Add(btnLock);
             Controls.Add(btnExit);
             Controls.Add(btnRemove);
+        }
 
-            // 将菜单以外的内容整体放入可滚动面板，面板位于菜单下方，避免与菜单重叠
-            Panel content = new Panel();
-            content.Location = new Point(0, menu.Height);
-            content.Size = new Size(ClientSize.Width, ClientSize.Height - menu.Height);
-            content.AutoScroll = true;
-            for (int i = Controls.Count - 1; i >= 0; i--)
-            {
-                Control c = Controls[i];
-                if (c is MenuStrip) continue;
-                Controls.RemoveAt(i);
-                content.Controls.Add(c);
-            }
-            Controls.Add(content);
-            this.AutoScroll = false;
-            menu.BringToFront();
-            Program.FlattenButtons(this);
+        /// <summary>切换用户时刷新时长/时段/已用/年级科目多选状态</summary>
+        static void RefreshUserControls(ComboBox cbUser, RadioButton[] rbs, TextBox txtWin,
+            Label lblUsed, CheckBox[] gcb, CheckBox[] scb)
+        {
+            string u = cbUser.Text;
+            int dur = Store.GetDurationMinutes(u);
+            for (int i = 0; i < rbs.Length; i++) rbs[i].Checked = ((int)rbs[i].Tag == dur);
+            txtWin.Text = Store.GetWindow(u);
+            int used = Store.GetUsedToday(u);
+            lblUsed.Text = "「" + u + "」今日已用：" + (used / 60) + " 分 " + (used % 60) + " 秒";
+            // 锁屏答题：年级 / 科目（多选）按用户刷新
+            int[] gsel = Store.GetGrades(u);
+            for (int i = 0; i < gcb.Length; i++) gcb[i].Checked = Array.IndexOf(gsel, (int)gcb[i].Tag) >= 0;
+            int[] ssel = Store.GetSubjects(u);
+            for (int i = 0; i < scb.Length; i++) scb[i].Checked = Array.IndexOf(ssel, (int)scb[i].Tag) >= 0;
         }
 
         static TextBox NewBox(int x, int y)
@@ -506,62 +476,6 @@ namespace PCLock
             l.AutoSize = true;
             l.Location = new Point(x, y);
             return l;
-        }
-    }
-
-    /// <summary>关于窗口：程序名+版本号、免费声明、作者，以及原设置页的功能说明。</summary>
-    public class AboutForm : Form
-    {
-        public AboutForm()
-        {
-            Text = "关于";
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            StartPosition = FormStartPosition.CenterParent;
-            ShowInTaskbar = false;
-            ClientSize = new Size(440, 270);
-            this.Icon = Program.LoadAppIcon();
-
-            Label name = new Label();
-            name.Text = "电脑锁 v" + AppVersion.Version + " (" + AppVersion.Commit + ")";
-            name.Font = new Font("Microsoft YaHei", 14, FontStyle.Bold);
-            name.AutoSize = true;
-            name.Location = new Point(20, 20);
-
-            Label free = new Label();
-            free.Text = "本程序免费。";
-            free.Font = new Font("Microsoft YaHei", 11);
-            free.AutoSize = true;
-            free.Location = new Point(20, 66);
-
-            Label author = new Label();
-            author.Text = "作者：bgaidu、AI";
-            author.Font = new Font("Microsoft YaHei", 11);
-            author.AutoSize = true;
-            author.Location = new Point(20, 96);
-
-            Label desc = new Label();
-            desc.Text = "功能说明：锁屏后需全部答对 " + Constants.TotalQuestions +
-                " 道题（数学填答案，语文/英语四选一，答错清零重来），或由家长输入 PIN 解锁。";
-            desc.AutoSize = false;
-            desc.Size = new Size(400, 70);
-            desc.Location = new Point(20, 130);
-
-            Button ok = new Button();
-            ok.Text = "确定";
-            ok.DialogResult = DialogResult.OK;
-            ok.Location = new Point(180, 215);
-            ok.Size = new Size(80, 30);
-            ok.Click += delegate { Close(); };
-
-            Controls.Add(name);
-            Controls.Add(free);
-            Controls.Add(author);
-            Controls.Add(desc);
-            Controls.Add(ok);
-            AcceptButton = ok;
-            Program.FlattenButtons(this);
         }
     }
 }

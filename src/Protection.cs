@@ -55,7 +55,10 @@ namespace PCLock
                 WriteAce(sd, 28 + aceSize, 0, allowMask, everyone);  // 允许 ACE (type=0 ACCESS_ALLOWED_ACE_TYPE)
                 SetKernelObjectSecurity(GetCurrentProcess(), DACL_SECURITY_INFORMATION, sd);
             }
-            catch (Exception) { }
+            catch (Exception ex)
+            {
+                Program.Log("Protection.ProtectSelf 失败: " + ex.Message);
+            }
         }
 
         static void WriteAce(byte[] buf, int off, byte type, uint mask, byte[] sid)
@@ -91,7 +94,10 @@ namespace PCLock
                 sd[25] = 0;
                 SetKernelObjectSecurity(GetCurrentProcess(), DACL_SECURITY_INFORMATION, sd);
             }
-            catch (Exception) { }
+            catch (Exception ex)
+            {
+                Program.Log("Protection.UnprotectSelf 失败: " + ex.Message);
+            }
         }
 
         /// <summary>禁用/恢复任务管理器（写 DisableTaskMgr 策略，HKCU + HKLM 双保险）</summary>
@@ -119,7 +125,10 @@ namespace PCLock
                     }
                 }
             }
-            catch (Exception) { }
+            catch (Exception ex)
+            {
+                Program.Log("Protection.ApplyPolicy(" + on + ") 失败: " + ex.Message);
+            }
         }
     }
 }

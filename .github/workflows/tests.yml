@@ -1,0 +1,51 @@
+name: Unit Tests
+
+on:
+  push:
+    branches: ['**']
+    tags-ignore: ['v*']   # 打 tag 的发布构建由 release.yml 负责，避免重复跑
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Run unit tests (tests\run.bat)
+        shell: cmd
+        run: |
+          rem 零依赖：用 windows-latest 镜像自带的 .NET Framework 4.x csc 编译并运行。
+          rem 退出码非 0 即视为失败（TUnit.Runner 返回失败数）。
+          call tests\run.bat
+          if errorlevel 1 (
+            echo [错误] 单元测试失败
+            exit /b 1
+          )
+          echo [成功] 单元测试全部通过
+
+      - name: Build PCLock.exe (build.bat Release)
+        shell: cmd
+        run: |
+          rem 与 release.yml 复用同一编译入口，避免 CI 里的编译清单与脚本漂移。
+          rem build.bat 内部已做 CI 感知（CI=true 时跳过 pause），产物在 bin\Release\。
+          call build.bat Release
+          if errorlevel 1 (
+            echo [错误] build.bat 编译失败
+            exit /b 1
+          )
+
+          if not exist bin\Release\PCLock.exe (
+            echo [错误] bin\Release\PCLock.exe 未生成
+            dir bin\Release
+            exit /b 1
+          )
+
+          echo [成功] PCLock.exe 编译通过
+          dir bin\Release\PCLock.exe

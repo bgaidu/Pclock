@@ -21,6 +21,7 @@ namespace PCLock
         public const int Warn5MinSec = 300;      // 5 分钟提醒阈值
         public const int Warn1MinSec = 60;       // 1 分钟提醒阈值
         public const int PersistIntervalSec = 15; // 持久化间隔
+        public const int OfflineDeductThresholdSec = 30; // 硬断电离线折算阈值：离线低于此值视为正常关机延迟，不扣时长
 
         // === 锁屏答题 ===
         public const int TotalQuestions = 10;    // 每次锁屏题数
@@ -39,6 +40,7 @@ namespace PCLock
         public const int GuardCheckIntervalMs = 3000;   // 守护/看门狗检查间隔
         public const int WatchdogStartupWaitMs = 8000;  // 看门狗等待主程序启动上限
         public const int WatchdogPollIntervalMs = 500;  // 看门狗轮询间隔
+        public const int WatchdogExitWaitMs = 6000;     // 卸载时等待看门狗自行退出的上限
 
         // === UI ===
         public const int UiTimerIntervalMs = 500; // LockForm 保持全屏/焦点定时器

@@ -1,0 +1,1033 @@
+# KidsLock 项目实施规划（调整版）
+
+## 🎯 规划总览
+
+```
+阶段一：安全加固（P0）→ 阶段二：核心功能（P1）→ 阶段三：体验优化（P2）→ 阶段四：技术优化（P3）
+```
+
+**总工期**：约 **13.5个工作日**（2.5周）
+
+**调整说明**：
+- ✅ 默认PIN保持"1234"不变
+- ✅ 增强PIN输入体验（遮罩、重置）
+- ✅ 其他所有任务按原规划推进
+
+---
+
+## 📋 阶段一：安全加固（P0）
+
+### 任务 1.1：PIN 输入体验增强
+**优先级**：P0 | **工作量**：0.5天 | **依赖**：无
+
+#### 实施步骤
+
+1. **PIN输入框改为密码模式**：
+```xml
+<!-- activity_main.xml -->
+<EditText
+    android:id="@+id/pinEditText"
+    android:inputType="numberPassword"
+    android:maxLength="4"
+    android:hint="请输入PIN码"/>
+```
+
+2. **PIN输入时显示遮罩字符**：
+```java
+// MainActivity.java
+pinEditText.setTransformationMethod(PasswordTransformationMethod.getInstance());
+```
+
+3. **添加PIN重置功能**：
+```java
+// 设置页"忘记PIN"按钮
+btnForgotPin.setOnClickListener(v -> showPinResetDialog());
+
+private void showPinResetDialog() {
+    new AlertDialog.Builder(this)
+        .setTitle("忘记PIN")
+        .setMessage("请回答安全问题来重置PIN")
+        .setPositiveButton("回答", (dialog, which) -> {
+            showSecurityQuestionDialog();
+        })
+        .setNegativeButton("取消", null)
+        .show();
+}
+
+private void showSecurityQuestionDialog() {
+    new AlertDialog.Builder(this)
+        .setTitle("安全问题")
+        .setMessage("孩子出生年份是？")
+        .setPositiveButton("提交", (dialog, which) -> {
+            // 验证答案
+        })
+        .setNegativeButton("取消", null)
+        .show();
+}
+```
+
+4. **PIN输入验证**：
+```java
+public boolean verifyPin(String input) {
+    if (input.length() != 4 || !input.matches("\\d{4}")) {
+        Toast.makeText(this, "PIN必须是4位数字", Toast.LENGTH_SHORT).show();
+        return false;
+    }
+    return input.equals(prefs.getString(KEY_PARENT_PIN, "1234"));
+}
+```
+
+#### 验收标准
+- ✅ PIN输入时显示遮罩字符（`*`）
+- ✅ PIN必须是4位数字
+- ✅ 提供"忘记PIN"重置功能
+- ✅ 安全问题验证正确
+
+#### 相关文件
+- `app/src/main/java/com/kidslock/app/MainActivity.java`
+- `app/src/main/res/layout/activity_main.xml`
+- `app/src/main/res/values/strings.xml`
+
+---
+
+### 任务 1.2：题库完整性校验
+**优先级**：P0 | **工作量**：0.5天 | **依赖**：无
+
+#### 实施步骤
+
+1. **创建 `BankValidator.java`**：
+```java
+public class BankValidator {
+    public static ValidationResult validate(Context ctx, int grade) {
+        List<String> missing = new ArrayList<>();
+        for (String subject : Subject.ORDER) {
+            String path = getBankPath(subject, grade);
+            if (!isValidJson(ctx, path)) {
+                missing.add(subject);
+            }
+        }
+        return new ValidationResult(missing);
+    }
+    
+    private static boolean isValidJson(Context ctx, String path) {
+        try {
+            InputStream is = ctx.getAssets().open(path);
+            new JsonSlurper().parse(is);
+            is.close();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+}
+```
+
+2. **在 `QuestionEngine.create()` 中添加校验**：
+```java
+public static QuestionEngine create(Context ctx, PrefManager pref) {
+    // ... 现有代码
+    ValidationResult result = BankValidator.validate(ctx, grade);
+    if (!result.getMissing().isEmpty()) {
+        Log.e(TAG, "题库缺失: " + result.getMissing());
+        showBankErrorDialog(ctx, result.getMissing());
+    }
+}
+```
+
+3. **添加题库下载功能**（可选）：
+```java
+public void downloadMissingBanks(Context ctx, List<String> missing) {
+    // 从GitHub releases下载缺失的题库
+    // 或提供"重置为默认题库"按钮
+}
+```
+
+#### 验收标准
+- ✅ 启动时检测题库完整性
+- ✅ 题库损坏时显示明确错误提示
+- ✅ 题库缺失时提供恢复选项
+
+#### 相关文件
+- `app/src/main/java/com/kidslock/app/BankValidator.java`（新建）
+- `app/src/main/java/com/kidslock/app/question/QuestionEngine.java`
+- `app/src/main/res/layout/activity_main.xml`（添加错误提示UI）
+
+---
+
+### 任务 1.3：安全审计与日志
+**优先级**：P0 | **工作量**：0.5天 | **依赖**：1.1, 1.2
+
+#### 实施步骤
+
+1. **添加关键操作日志**：
+```java
+public class SecurityLogger {
+    public static void logPinAttempt(boolean success, String reason) {
+        Log.d(TAG, String.format("PIN尝试: %s, 原因: %s", 
+            success ? "成功" : "失败", reason));
+    }
+    
+    public static void logBypassAttempt(String method) {
+        Log.e(TAG, "检测到绕过尝试: " + method);
+        // 可选：上报到家长手机
+    }
+}
+```
+
+2. **添加锁屏状态持久化**：
+```java
+// 确保重启后锁屏状态正确恢复
+public void saveLockState(boolean locked) {
+    prefs.edit().putBoolean(KEY_IS_LOCKED, locked).apply();
+}
+
+// 在 BootReceiver 中恢复
+public void onReceive(Context ctx, Intent intent) {
+    boolean locked = pref.isLocked();
+    if (locked) {
+        LockService.triggerLock(ctx);
+    }
+}
+```
+
+3. **安全测试**：
+```bash
+# 测试三种绕过场景
+# 1. 改系统时间
+# 2. 杀后台
+# 3. 强停重启
+```
+
+#### 验收标准
+- ✅ 关键操作都有日志记录
+- ✅ 所有绕过尝试都被记录
+- ✅ 重启后锁屏状态100%恢复
+
+#### 相关文件
+- `app/src/main/java/com/kidslock/app/SecurityLogger.java`（新建）
+- `app/src/main/java/com/kidslock/app/BootReceiver.java`
+- `app/src/test/java/com/kidslock/app/PrefManagerTest.java`（新建）
+
+---
+
+## 🚀 阶段二：核心功能优化（P1）
+
+### 任务 2.1：拼音分级字表资产（R22 + Q8 + Q10-A）
+**优先级**：P1 | **工作量**：1.5天 | **依赖**：T1
+
+#### 实施步骤
+
+1. **修改 `gen_pinyin_banks.py`**：
+```python
+import json
+import random
+from collections import Counter
+
+GRADE_SPECS = {
+    0: {"min_len": 60, "stroke_limit": 6, "type": "独体字"},
+    1: {"min_len": 100, "stroke_limit": 8, "type": "简单合体字"},
+    2: {"min_len": 100, "stroke_limit": 10, "type": "常用合体字"},
+    3: {"min_len": 100, "stroke_limit": 12, "type": "进阶合体字"},
+    4: {"min_len": 100, "stroke_limit": 14, "type": "复杂合体字"},
+    5: {"min_len": 144, "stroke_limit": 16, "type": "高阶合体字"},
+    6: {"min_len": 144, "stroke_limit": 18, "type": "超纲合体字"},
+}
+
+def generate_pinyin_bank(grade):
+    specs = GRADE_SPECS[grade]
+    # 根据年级规格生成字表
+    # ...
+    return bank
+
+# 生成7级字表
+for g in range(7):
+    bank = generate_pinyin_bank(g)
+    with open(f"pinyin_{g}.json", "w", encoding="utf-8") as f:
+        json.dump(bank, f, ensure_ascii=False, indent=2)
+```
+
+2. **构建校验**（`app/build.gradle`）：
+```gradle
+task verifyQuestionBanks {
+    doLast {
+        def grades = [0, 1, 2, 3, 4, 5, 6]
+        grades.each { g ->
+            def path = "app/src/main/assets/banks/pinyin_${g}.json"
+            def file = file(path)
+            def content = new groovy.json.JsonSlurper().parse(file)
+            
+            assert content.size() >= 60 : "pinyin_${g} 条目不足"
+            assert content.collect { it.v }.toSet().size() >= 4 : "pinyin_${g} 拼音去重不足"
+        }
+    }
+}
+```
+
+3. **人工抽验**：
+- 每级随机抽20条，确认在对应年级识字范围内
+- 检查无超纲字
+
+#### 验收标准
+```bash
+# 1. 构建验证
+./gradlew verifyQuestionBanks
+
+# 2. 编译通过
+./gradlew assembleDebug --offline
+
+# 3. 真机验证
+# 学前/一年级：直接命中本级字表，不再回退到五年级
+```
+
+#### 相关文件
+- `app/src/main/assets/banks/pinyin_0..6.json`（新增）
+- `gen_pinyin_banks.py`（新增）
+- `app/build.gradle`（修改）
+
+---
+
+### 任务 2.2：干扰项质量单测（R23）
+**优先级**：P1 | **工作量**：1.5天 | **依赖**：T1
+
+#### 实施步骤
+
+1. **创建 `DistractorSampler.java`**：
+```java
+public final class DistractorSampler {
+    @Nullable
+    public static List<String> sample(@NonNull List<BankEntry> pool,
+                                      @NonNull BankEntry chosen, 
+                                      boolean answerKey,
+                                      @NonNull Random random) {
+        // 从同池取 3 个与 chosenVal 不同且互不相同的候选
+        Set<String> poolSet = new HashSet<>();
+        for (BankEntry entry : pool) {
+            poolSet.add(entry.v);
+        }
+        
+        List<String> distractors = new ArrayList<>();
+        for (BankEntry entry : pool) {
+            if (entry.v.equals(chosen.v)) continue;
+            if (distractors.size() >= 3) break;
+            if (!distractors.contains(entry.v)) {
+                distractors.add(entry.v);
+            }
+        }
+        
+        if (distractors.size() < 3) return null;  // 绝不占位
+        
+        // 拼成4选项并洗牌
+        List<String> options = new ArrayList<>();
+        options.add(chosen.v);
+        options.addAll(distractors);
+        
+        Collections.shuffle(options, random);
+        return options;
+    }
+}
+```
+
+2. **创建单测**：
+```java
+public class DistractorSamplerTest {
+    @Test
+    public void testPinyinDistractors() {
+        List<BankEntry> pool = createPool("a", "b", "c", "d", "e", "f", "g");
+        BankEntry chosen = new BankEntry("汉字", "a");
+        List<String> options = DistractorSampler.sample(pool, chosen, false, new Random());
+        
+        assertNotNull(options);
+        assertEquals(4, options.size());
+        
+        // 验证选项互不相同
+        Set<String> optionSet = new HashSet<>(options);
+        assertEquals(4, optionSet.size());
+        
+        // 验证干扰项≠正确项
+        assertFalse(options.contains(chosen.v));
+    }
+    
+    @Test
+    public void testMathDistractors() {
+        // 数学干扰项应与正确值位数差 ≤ 1
+        // ...
+    }
+    
+    private List<BankEntry> createPool(String... pinyins) {
+        List<BankEntry> pool = new ArrayList<>();
+        for (String pinyin : pinyins) {
+            pool.add(new BankEntry("汉字" + pinyin, pinyin));
+        }
+        return pool;
+    }
+}
+```
+
+3. **修改现有代码**：
+- `BankProvider.java`：改调 `DistractorSampler.sample()`
+- `EnglishProvider.java`：改调 `DistractorSampler.sample()`
+
+#### 验收标准
+```bash
+# 1. 单测通过
+./gradlew testDebugUnitTest --offline
+
+# 2. 行为不变（重构不破坏功能）
+./gradlew assembleDebug --offline
+```
+
+#### 相关文件
+- `app/src/main/java/com/kidslock/app/question/DistractorSampler.java`（新增）
+- `app/src/test/java/com/kidslock/app/question/DistractorSamplerTest.java`（新增）
+- `app/src/test/java/com/kidslock/app/question/MathProviderTest.java`（新增）
+- `app/src/test/java/com/kidslock/app/question/ScheduleTest.java`（新增）
+- `app/src/main/java/com/kidslock/app/question/BankProvider.java`（修改）
+- `app/src/main/java/com/kidslock/app/question/EnglishProvider.java`（修改）
+- `app/build.gradle`（修改，添加JUnit）
+
+---
+
+### 任务 2.3：预览一道题入口（R24）
+**优先级**：P1 | **工作量**：1天 | **依赖**：T1
+
+#### 实施步骤
+
+1. **创建 `QuestionUi.java`**：
+```java
+public final class QuestionUi {
+    public static void render(@NonNull Activity act, @NonNull Question q,
+                             @NonNull TextView tvStem, 
+                             @NonNull TextView tvHint,
+                             @NonNull Button[] optionButtons) {
+        tvStem.setText(q.getStem());
+        tvHint.setText(q.getHint());
+        
+        List<String> options = q.getOptions();
+        for (int i = 0; i < optionButtons.length; i++) {
+            optionButtons[i].setText(options.get(i));
+        }
+    }
+}
+```
+
+2. **创建 `QuestionPreviewActivity.java`**：
+```java
+public class QuestionPreviewActivity extends AppCompatActivity {
+    private QuestionEngine previewEngine;  // 独立实例
+    private TextView tvStem, tvHint;
+    private Button[] optionButtons;
+    
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_question_preview);
+        
+        // 创建独立 QuestionEngine 实例
+        previewEngine = QuestionEngine.create(this, pref);
+        
+        loadNextQuestion();
+    }
+    
+    public void loadNextQuestion() {
+        Question q = previewEngine.nextPreviewQuestion();
+        QuestionUi.render(this, q, tvStem, tvHint, optionButtons);
+    }
+    
+    public void onOptionClicked(int index) {
+        boolean correct = (index == q.correctIndex);
+        highlightOption(index, correct);
+    }
+    
+    public void onNextQuestion() {
+        loadNextQuestion();
+    }
+    
+    public void onClose() {
+        finish();
+    }
+}
+```
+
+3. **修改 `QuestionEngine.java`**：
+```java
+public class QuestionEngine {
+    // ... 现有代码
+    
+    /**
+     * 预览专用：直接 provider.next，绝不触碰 recent 队列
+     */
+    @NonNull
+    public Question nextPreviewQuestion() {
+        // 从当前科目随机取 provider，调用 next()，绕过 recent
+        // ...
+    }
+}
+```
+
+4. **修改 `MainActivity.java`**：
+```java
+// 设置页出题区内添加预览按钮
+btnPreview.setOnClickListener(v -> {
+    startActivity(new Intent(this, QuestionPreviewActivity.class));
+});
+```
+
+#### 验收标准
+- 设置页点预览 → 显示当前年级/科目下一道题
+- 连点换题不出现重复抑制异常
+- 退出后锁屏真实防重复队列不受影响
+- 选项点击仅高亮对错，不解锁不计数
+
+#### 相关文件
+- `app/src/main/java/com/kidslock/app/question/QuestionUi.java`（新增）
+- `app/src/main/java/com/kidslock/app/QuestionPreviewActivity.java`（新增）
+- `app/src/main/res/layout/activity_question_preview.xml`（新增）
+- `app/src/main/java/com/kidslock/app/question/QuestionEngine.java`（修改）
+- `app/src/main/java/com/kidslock/app/MainActivity.java`（修改）
+- `app/src/main/res/layout/activity_main.xml`（修改）
+- `app/src/main/res/values/strings.xml`（修改）
+
+---
+
+### 任务 2.4：答题正确率统计（R25）
+**优先级**：P1 | **工作量**：1天 | **依赖**：T2.2, T2.3
+
+#### 实施步骤
+
+1. **修改 `PrefManager.java`**：
+```java
+// 新增统计key
+private static final String KEY_STAT_TOTAL = "stat_total";
+private static final String KEY_STAT_CORRECT = "stat_correct";
+
+// 记录答题
+public void recordAnswer(boolean correct) {
+    prefs.edit()
+        .putInt(KEY_STAT_TOTAL, getStatTotal() + 1)
+        .putInt(KEY_STAT_CORRECT, getStatCorrect() + (correct ? 1 : 0))
+        .apply();
+}
+
+// 获取正确率
+public int getAccuracyPercent() {
+    int total = getStatTotal();
+    if (total == 0) return -1;  // 无数据
+    int correct = getStatCorrect();
+    return (int) Math.round(100.0 * correct / total);
+}
+
+// 辅助方法
+public int getStatTotal() {
+    return prefs.getInt(KEY_STAT_TOTAL, 0);
+}
+
+public int getStatCorrect() {
+    return prefs.getInt(KEY_STAT_CORRECT, 0);
+}
+```
+
+2. **修改 `LockScreenActivity.java`**：
+```java
+public void onOptionSelected(int index, String option) {
+    boolean correct = (index == currentQuestion.getCorrectIndex());
+    
+    // 记录正确率
+    pref.recordAnswer(correct);
+    
+    // 原有逻辑...
+}
+```
+
+3. **修改 `MainActivity.java`**：
+```java
+public void updateStatus() {
+    // ... 现有代码
+    
+    // 显示正确率
+    int accuracy = pref.getAccuracyPercent();
+    if (accuracy >= 0) {
+        tvAccuracy.setText("累计正确率：" + accuracy + "%");
+    } else {
+        tvAccuracy.setVisibility(View.GONE);
+    }
+}
+```
+
+#### 验收标准
+- 连续作答后设置页正确率随作答更新
+- 计时/防绕过回归无变化
+- 正确率数据持久化（重启后保留）
+
+#### 相关文件
+- `app/src/main/java/com/kidslock/app/PrefManager.java`（修改）
+- `app/src/main/java/com/kidslock/app/LockScreenActivity.java`（修改）
+- `app/src/main/java/com/kidslock/app/MainActivity.java`（修改）
+- `app/src/main/res/layout/activity_main.xml`（修改）
+- `app/src/main/res/values/strings.xml`（修改）
+
+---
+
+### 任务 2.5：家长导入自定义题库（R26）
+**优先级**：P1 | **工作量**：2天 | **依赖**：T2.2
+
+#### 实施步骤
+
+1. **创建 `CustomBankStore.java`**：
+```java
+public final class CustomBankStore {
+    private static final String CUSTOM_DIR = "custom_banks";
+    
+    public static boolean hasCustom(Context ctx, String subject, int grade) {
+        File file = new File(ctx.getFilesDir(), CUSTOM_DIR + "/" + subject + "_" + grade + ".json");
+        return file.exists();
+    }
+    
+    public static boolean importBank(Context ctx, String subject, int grade, String json) {
+        try {
+            org.json.JSONObject obj = new org.json.JSONObject(json);
+            org.json.JSONArray entries = obj.getJSONArray("entries");
+            
+            // 校验：条目 ≥ 4，k/v 非空
+            if (entries.length() < 4) return false;
+            
+            // 写入文件
+            File dir = new File(ctx.getFilesDir(), CUSTOM_DIR);
+            dir.mkdirs();
+            File file = new File(dir, subject + "_" + grade + ".json");
+            FileUtils.writeStringToFile(file, json, StandardCharsets.UTF_8);
+            
+            Log.i(TAG, "自定义题库导入成功: " + subject + "_" + grade);
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "导入失败", e);
+            return false;
+        }
+    }
+    
+    @Nullable
+    public static BankRepository.LoadResult loadCustom(Context ctx, String subject, int grade) {
+        File file = new File(ctx.getFilesDir(), CUSTOM_DIR + "/" + subject + "_" + grade + ".json");
+        if (!file.exists()) return null;
+        
+        String json = FileUtils.readFileToString(file, StandardCharsets.UTF_8);
+        org.json.JSONObject obj = new org.json.JSONObject(json);
+        org.json.JSONArray entries = obj.getJSONArray("entries");
+        
+        List<BankEntry> list = new ArrayList<>();
+        for (int i = 0; i < entries.length(); i++) {
+            org.json.JSONObject entry = entries.getJSONObject(i);
+            list.add(new BankEntry(entry.getString("k"), entry.getString("v")));
+        }
+        
+        return new BankRepository.LoadResult(list, 0);  // L0 层级
+    }
+    
+    public static boolean clear(Context ctx, String subject, int grade) {
+        File file = new File(ctx.getFilesDir(), CUSTOM_DIR + "/" + subject + "_" + grade + ".json");
+        return file.delete();
+    }
+}
+```
+
+2. **修改 `BankRepository.java`**：
+```java
+public class BankRepository {
+    public static LoadResult load(Context ctx, String subject, int grade) {
+        // L0 自定义优先
+        LoadResult custom = CustomBankStore.loadCustom(ctx, subject, grade);
+        if (custom != null && custom.usable()) {
+            Log.i(TAG, "使用自定义题库: " + subject + "_" + grade);
+            return custom;
+        }
+        
+        // L1 资产
+        // ...
+    }
+}
+```
+
+3. **修改 `MainActivity.java`**：
+```java
+// 导入入口
+btnImport.setOnClickListener(v -> showImportDialog());
+
+private void showImportDialog() {
+    new AlertDialog.Builder(this)
+        .setTitle("导入自定义题库")
+        .setItems(new String[]{"拼音", "英语", "语文"}, (dialog, which) -> {
+            String subject = SUBJECT_ORDER[which];
+            showGradeSelector(subject);
+        })
+        .show();
+}
+
+private void showGradeSelector(String subject) {
+    // 显示年级选择对话框
+}
+
+// SAF选择文件
+private void selectFile() {
+    Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+    intent.setType("application/json");
+    startActivityForResult(intent, REQUEST_CODE_IMPORT);
+}
+
+@Override
+protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+    if (requestCode == REQUEST_CODE_IMPORT && resultCode == RESULT_OK) {
+        Uri uri = data.getData();
+        String json = readJsonFromUri(uri);
+        
+        boolean success = CustomBankStore.importBank(this, currentSubject, currentGrade, json);
+        Toast.makeText(this, success ? "导入成功" : "导入失败", Toast.LENGTH_SHORT).show();
+    }
+}
+
+private String readJsonFromUri(Uri uri) {
+    // 使用 ContentResolver 读取文件
+}
+```
+
+#### 验收标准
+- 导入合法 json 后该 (科目,年级) 出题即来自自定义内容
+- 导入非法文件被拒且不影响原有出题
+- 删除全部 assets 极端场景下仍由 L3 兜底非 null
+- 提供「清除自定义题库」功能
+
+#### 相关文件
+- `app/src/main/java/com/kidslock/app/question/CustomBankStore.java`（新增）
+- `app/src/main/java/com/kidslock/app/question/BankRepository.java`（修改）
+- `app/src/main/java/com/kidslock/app/MainActivity.java`（修改）
+- `app/src/main/res/layout/activity_main.xml`（修改）
+- `app/src/main/res/values/strings.xml`（修改）
+
+---
+
+## ✨ 阶段三：体验优化（P2）
+
+### 任务 3.1：UI 动画效果
+**优先级**：P2 | **工作量**：1天 | **依赖**：T2.3, T2.4
+
+#### 实施步骤
+
+1. **答题动画**：
+```xml
+<!-- activity_lock_screen.xml -->
+<ViewFlipper android:id="@+id/questionFlipper">
+    <FrameLayout>
+        <TextView android:animateChanges="true"/>
+        <Button android:animateLayoutChanges="true"/>
+    </FrameLayout>
+</ViewFlipper>
+```
+
+2. **翻转效果**：
+```java
+public void showNextQuestion() {
+    ObjectAnimator animator = ObjectAnimator.ofFloat(
+        tvQuestion, "rotationY", 90, 0);
+    animator.setDuration(300);
+    animator.start();
+}
+```
+
+3. **PIN输入动画**：
+```java
+tvPinDisplay.append("*");
+tvPinDisplay.setAlpha(0);
+tvPinDisplay.animate().alpha(1).setDuration(100);
+```
+
+#### 验收标准
+- ✅ 答对时显示成功动画
+- ✅ 答错时显示错误动画
+- ✅ 题目切换有平滑过渡
+- ✅ PIN输入有视觉反馈
+
+#### 相关文件
+- `app/src/main/res/anim/`（新建动画文件）
+- `app/src/main/res/layout/activity_lock_screen.xml`
+- `app/src/main/java/com/kidslock/app/LockScreenActivity.java`
+
+---
+
+### 任务 3.2：题目预览功能
+**优先级**：P2 | **工作量**：0.5天 | **依赖**：T2.3
+
+#### 实施步骤
+
+1. 在设置页添加"预览题目"按钮
+2. 预览对话框显示题目类型和难度
+3. 预览后不消耗答题次数
+
+#### 验收标准
+- ✅ 可预览当前难度题目
+- ✅ 显示题目类型和难度
+- ✅ 预览后不消耗答题次数
+
+#### 相关文件
+- `app/src/main/java/com/kidslock/app/MainActivity.java`
+- `app/src/main/res/layout/dialog_preview.xml`（新建）
+
+---
+
+## 🔧 阶段四：技术优化（P3）
+
+### 任务 4.1：单元测试覆盖
+**优先级**：P3 | **工作量**：2天 | **依赖**：T2.2
+
+#### 实施步骤
+
+1. 为核心类添加测试
+2. 添加集成测试
+
+#### 验收标准
+- ✅ 单元测试覆盖率 ≥ 60%
+- ✅ 所有核心功能有测试用例
+- ✅ 测试通过率 100%
+
+#### 相关文件
+- `app/src/test/java/com/kidslock/app/`（新建测试类）
+
+---
+
+### 任务 4.2：性能优化
+**优先级**：P3 | **工作量**：1天 | **依赖**：T4.1
+
+#### 实施步骤
+
+1. 题库加载异步化
+2. 使用对象池
+
+#### 验收标准
+- ✅ 启动时间减少 20%
+- ✅ 内存占用减少 15%
+- ✅ 题库加载不阻塞UI
+
+#### 相关文件
+- `app/src/main/java/com/kidslock/app/question/BankLoader.java`（新增）
+- `app/src/main/java/com/kidslock/app/question/QuestionPool.java`（新增）
+
+---
+
+### 任务 4.3：代码质量提升
+**优先级**：P3 | **工作量**：1天 | **依赖**：T4.1
+
+#### 实施步骤
+
+1. 添加Lint检查
+2. 代码重构
+3. 添加JavaDoc
+
+#### 验收标准
+- ✅ Lint检查无警告
+- ✅ 代码重复率 < 5%
+- ✅ 所有公共类有JavaDoc
+
+#### 相关文件
+- `app/build.gradle`
+- `app/src/main/java/com/kidslock/app/`（重构代码）
+
+---
+
+## 📊 实施时间表
+
+| 任务 | 优先级 | 预估时间 | 开始日期 | 完成日期 | 状态 |
+|------|--------|---------|---------|---------|------|
+| 1.1 PIN输入体验增强 | P0 | 0.5天 | 2026-10-15 | 2026-10-15 | 📅 |
+| 1.2 题库完整性校验 | P0 | 0.5天 | 2026-10-15 | 2026-10-15 | 📅 |
+| 1.3 安全审计与日志 | P0 | 0.5天 | 2026-10-16 | 2026-10-16 | 📅 |
+| 2.1 拼音分级字表 | P1 | 1.5天 | 2026-10-17 | 2026-10-18 | 📅 |
+| 2.2 干扰项单测 | P1 | 1.5天 | 2026-10-19 | 2026-10-20 | 📅 |
+| 2.3 预览入口 | P1 | 1天 | 2026-10-21 | 2026-10-21 | 📅 |
+| 2.4 正确率统计 | P1 | 1天 | 2026-10-22 | 2026-10-22 | 📅 |
+| 2.5 自定义题库导入 | P1 | 2天 | 2026-10-23 | 2026-10-24 | 📅 |
+| 3.1 UI动画效果 | P2 | 1天 | 2026-10-25 | 2026-10-25 | 📅 |
+| 3.2 题目预览功能 | P2 | 0.5天 | 2026-10-26 | 2026-10-26 | 📅 |
+| 4.1 单元测试覆盖 | P3 | 2天 | 2026-10-27 | 2026-10-28 | 📅 |
+| 4.2 性能优化 | P3 | 1天 | 2026-10-29 | 2026-10-29 | 📅 |
+| 4.3 代码质量提升 | P3 | 1天 | 2026-10-30 | 2026-10-30 | 📅 |
+
+**总计**：约 **13.5个工作日**（2.5周）
+
+---
+
+## 🎯 关键里程碑
+
+### 里程碑 1：安全加固完成（Day 3）
+- ✅ PIN输入体验增强
+- ✅ 题库完整性校验
+- ✅ 安全审计通过
+
+### 里程碑 2：核心功能完善（Day 8）
+- ✅ 拼音分级字表
+- ✅ 干扰项单测
+- ✅ 预览入口
+- ✅ 正确率统计
+- ✅ 自定义题库导入
+
+### 里程碑 3：体验优化（Day 9）
+- ✅ UI动画效果
+- ✅ 题目预览功能
+
+### 里程碑 4：技术优化（Day 13.5）
+- ✅ 单元测试覆盖
+- ✅ 性能优化
+- ✅ 代码质量提升
+
+---
+
+## 📝 每日工作流
+
+```bash
+# Day 1: 安全加固
+- 1.1 PIN输入体验增强（3小时）
+- 1.2 题库完整性校验（2小时）
+- 1.3 安全审计（3小时）
+
+# Day 2: 拼音分级字表
+- 生成7级字表脚本（4小时）
+- 人工抽验（2小时）
+
+# Day 3: 拼音分级字表收尾
+- 真机验证（2小时）
+- 修复问题（2小时）
+
+# Day 4: 干扰项单测（上）
+- 创建DistractorSampler（3小时）
+- 拼音/英语/语文单测（3小时）
+
+# Day 5: 干扰项单测（下）
+- 数学单测（2小时）
+- ScheduleTest（2小时）
+- 修改BankProvider/EnglishProvider（2小时）
+
+# Day 6: 预览入口
+- 创建QuestionUi（2小时）
+- 创建QuestionPreviewActivity（3小时）
+- 修改QuestionEngine（1小时）
+
+# Day 7: 正确率统计
+- 修改PrefManager（2小时）
+- 修改LockScreenActivity（2小时）
+- 修改MainActivity（2小时）
+
+# Day 8: 自定义题库导入
+- 创建CustomBankStore（3小时）
+- 修改BankRepository（2小时）
+- 修改MainActivity（3小时）
+
+# Day 9: UI动画
+- 答题动画（2小时）
+- 翻转效果（2小时）
+- PIN输入动画（2小时）
+
+# Day 10: 题目预览功能
+- 添加预览按钮（2小时）
+- 实现预览对话框（2小时）
+
+# Day 11-12: 单元测试
+- 核心类测试（4小时）
+- 集成测试（4小时）
+
+# Day 13: 性能优化
+- 题库加载异步化（3小时）
+- 对象池（2小时）
+
+# Day 13.5: 代码质量提升
+- Lint检查（2小时）
+- 代码重构（2小时）
+- 添加JavaDoc（2小时）
+```
+
+---
+
+## 🚀 快速启动命令
+
+```bash
+# 1. 创建新分支
+git checkout -b feature/kidslock-improvements
+
+# 2. 开始实施任务1.1
+vim app/src/main/java/com/kidslock/app/MainActivity.java
+
+# 3. 编译测试
+export JAVA_HOME=/d/soft/myapp/kidslock/.workbuddy/tools/jdk17
+export PATH="$JAVA_HOME/bin:$PATH"
+./gradlew assembleDebug --offline
+
+# 4. 运行单测（T2.2完成后）
+./gradlew testDebugUnitTest --offline
+
+# 5. 提交代码
+git add .
+git commit -m "feat: 1.1 PIN输入体验增强"
+
+# 6. 推送并创建PR
+git push origin feature/kidslock-improvements
+```
+
+---
+
+## 📊 风险评估
+
+| 风险 | 概率 | 影响 | 应对措施 |
+|------|------|------|---------|
+| 拼音字表生成脚本复杂 | 中 | 中 | 提前编写脚本原型，充分测试 |
+| 单测覆盖率不足 | 低 | 中 | 逐步增加测试用例，确保关键路径覆盖 |
+| 预览队列污染 | 低 | 低 | 独立QuestionEngine + nextPreviewQuestion()双重保证 |
+| 自定义题库导入失败 | 中 | 中 | 严格校验schema，失败时明确提示 |
+| UI动画兼容性问题 | 低 | 低 | 使用标准API，充分测试 |
+
+---
+
+## 📈 成功标准
+
+### 功能完整性
+- ✅ 所有P0/P1/P2/P3任务完成
+- ✅ 无阻塞性Bug
+- ✅ 单元测试覆盖率 ≥ 60%
+
+### 代码质量
+- ✅ Lint检查无警告
+- ✅ 代码重复率 < 5%
+- ✅ 所有公共类有JavaDoc
+
+### 用户体验
+- ✅ 启动时间 < 3秒
+- ✅ 动画流畅（60fps）
+- ✅ 界面响应迅速
+
+### 安全性
+- ✅ 无已知漏洞
+- ✅ 防绕过机制有效
+- ✅ 数据加密存储
+
+---
+
+## ⚠️ 重要说明
+
+### 关于范围边界
+
+**本轮专注**：
+- ✅ 安全加固（PIN输入体验、题库校验、安全审计）
+- ✅ 出题层优化（拼音分级、干扰项、预览、统计、导入）
+- ✅ 设置页扩展（预览、正确率、导入入口）
+- ✅ 体验优化（UI动画、题目预览）
+- ✅ 技术优化（单元测试、性能、代码质量）
+
+**不动**：
+- ❌ 计时/防绕过机制（LockService、BootReceiver等）
+- ❌ 家长控制面板
+- ❌ 其他非核心功能
+
+### 关于优先级
+
+- **P0（安全）**：必须完成，影响应用安全性
+- **P1（核心功能）**：必须完成，影响核心体验
+- **P2（体验优化）**：建议完成，提升用户体验
+- **P3（技术优化）**：可选完成，提升代码质量
+
+---
+
+需要我开始实施哪个任务？或者你想调整优先级？

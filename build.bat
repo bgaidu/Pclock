@@ -1,38 +1,38 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
-rem 用法:
-rem   build.bat            -> 默认 Debug，输出到 debug\
-rem   build.bat Debug      -> 输出到 debug\   （含调试符号 /define:DEBUG /optimize-）
-rem   build.bat Release    -> 输出到 release\ （优化开启 /optimize+）
-rem 产物与运行时文件统一放在对应子目录下，不污染项目根目录。
+rem �÷�:
+rem   build.bat            -> Ĭ�� Debug������� debug\
+rem   build.bat Debug      -> ����� debug\   �������Է��� /define:DEBUG /optimize-��
+rem   build.bat Release    -> ����� release\ ���Ż����� /optimize+��
+rem ����������ʱ�ļ�ͳһ���ڶ�Ӧ��Ŀ¼�£�����Ⱦ��Ŀ��Ŀ¼��
 
 set CONFIG=%1
 if "%CONFIG%"=="" set CONFIG=Debug
 if /I "%CONFIG%"=="debug"   set CONFIG=Debug
 if /I "%CONFIG%"=="release" set CONFIG=Release
 
-rem 优先使用 .NET Framework 4.x 自带的编译器。产物面向 .NET 4.0 运行时，
-rem 在装有 .NET 4.0+ 的 Win7 上即可运行（如系统未带 4.x，请先安装 .NET Framework 4.x）。
+rem ����ʹ�� .NET Framework 4.x �Դ��ı��������������� .NET 4.0 ����ʱ��
+rem ��װ�� .NET 4.0+ �� Win7 �ϼ������У���ϵͳδ�� 4.x�����Ȱ�װ .NET Framework 4.x����
 set CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
 if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe
 if not exist "%CSC%" (
-  echo [错误] 未找到 .NET Framework 4.x 编译器。
-  echo 请安装 .NET Framework 4.0 或更高版本（https://dotnet.microsoft.com/download/dotnet-framework）。
+  echo [����] δ�ҵ� .NET Framework 4.x ��������
+  echo �밲װ .NET Framework 4.0 ����߰汾��https://dotnet.microsoft.com/download/dotnet-framework����
   if "%CI%"=="" pause
   exit /b 1
 )
-echo 使用编译器: %CSC%
+echo ʹ�ñ�����: %CSC%
 
-rem 按配置选择编译选项
+rem ������ѡ�����ѡ��
 if "%CONFIG%"=="Debug" (
   set OPTS=/debug+ /define:DEBUG;TRACE /optimize-
 ) else (
   set OPTS=/optimize+ /debug-
 )
 
-rem 输出目录（bin\Debug 或 bin\Release）
+rem ���Ŀ¼��bin\Debug �� bin\Release��
 set OUTDIR=%~dp0bin\%CONFIG%\
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
 
@@ -41,24 +41,34 @@ rem generation logic exists in exactly one place. (ASCII-only comment on purpose
 rem cmd.exe reads this file with the system ANSI code page.)
 call gen_version.bat
 
+rem Source list is collected by wildcard instead of a hardcoded file list:
+rem adding/moving a .cs file no longer requires editing this script (a missing
+rem entry previously caused a compile failure). _Version.cs is generated above,
+rem so it is picked up by the glob as well.
+rem NOTE: in "for %%f in (src\*.cs)" the loop variable already carries the
+rem directory (e.g. src\App.cs), so do NOT prepend "src\" again - that yields
+rem src\src\App.cs and csc fails with CS2001.
+set SRCS=
+for %%f in (src\*.cs) do set SRCS=!SRCS! "%%f"
+
 "%CSC%" /nologo /target:winexe /out:"%OUTDIR%PCLock.exe" /win32manifest:app.manifest /win32icon:AppIcon.ico %OPTS% /codepage:65001 ^
   /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Security.dll ^
-  src\Program.cs src\App.cs src\Store.cs src\Protection.cs src\Watchdog.cs src\Questions.cs src\ChineseData.cs src\EnglishData.cs src\LockForm.cs src\SettingsForm.cs src\Constants.cs src\_Version.cs
+  %SRCS%
 
 if errorlevel 1 (
-  echo [错误] 编译失败。
-  pause
+  echo [����] ����ʧ�ܡ�
+  if "%CI%"=="" pause
   exit /b 1
 )
 
-rem 复制运行时所需文件到输出目录（与 PCLock.exe 放在一起）
+rem ��������ʱ�����ļ������Ŀ¼���� PCLock.exe ����һ��
 if exist "PCLock.exe.config" copy /Y "PCLock.exe.config" "%OUTDIR%PCLock.exe.config" >nul
 if exist "chinese.txt"       copy /Y "chinese.txt"       "%OUTDIR%chinese.txt"       >nul
 if exist "english.txt"       copy /Y "english.txt"       "%OUTDIR%english.txt"       >nul
 if exist "AppIcon.ico"       copy /Y "AppIcon.ico"       "%OUTDIR%AppIcon.ico"       >nul
 
 echo.
-echo 编译成功 [配置: %CONFIG%]: %OUTDIR%PCLock.exe
-echo （PCLock.exe.config 与 chinese.txt/english.txt 已一并复制到该目录）
+echo ����ɹ� [����: %CONFIG%]: %OUTDIR%PCLock.exe
+echo ��PCLock.exe.config �� chinese.txt/english.txt ��һ�����Ƶ���Ŀ¼��
 rem CI runners (GitHub Actions sets CI=true) have no stdin - pause would hang the job.
 if "%CI%"=="" pause

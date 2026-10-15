@@ -62,6 +62,31 @@ public class WindowTests
         Assert.IsFalse(Store.IsWithinWindow("25:00-26:00", new TimeSpan(3, 0, 0)));
         Assert.IsFalse(Store.IsWithinWindow("nocolon", new TimeSpan(3, 0, 0)));
     }
+
+    // ===== 跨午夜时段（起始大于结束，如 22:00-06:00）按环绕判断 =====
+    // 修复前 a<=now<=b 恒为 false，家长填跨午夜时段会导致全天硬锁。
+    [Test]
+    public void CrossMidnightInsideNight()
+    {
+        Assert.IsTrue(Store.IsWithinWindow("22:00-06:00", new TimeSpan(23, 0, 0)));
+        Assert.IsTrue(Store.IsWithinWindow("22:00-06:00", new TimeSpan(3, 0, 0)));
+    }
+
+    [Test]
+    public void CrossMidnightOutsideDay()
+    {
+        Assert.IsFalse(Store.IsWithinWindow("22:00-06:00", new TimeSpan(12, 0, 0)));
+        Assert.IsFalse(Store.IsWithinWindow("22:00-06:00", new TimeSpan(6, 30, 0)));
+        Assert.IsFalse(Store.IsWithinWindow("22:00-06:00", new TimeSpan(21, 59, 0)));
+    }
+
+    [Test]
+    public void CrossMidnightBoundaryInclusive()
+    {
+        Assert.IsTrue(Store.IsWithinWindow("22:00-06:00", new TimeSpan(22, 0, 0)));
+        Assert.IsTrue(Store.IsWithinWindow("22:00-06:00", new TimeSpan(6, 0, 0)));
+        Assert.IsFalse(Store.IsWithinWindow("22:00-06:00", new TimeSpan(6, 1, 0)));
+    }
 }
 
 public class QuestionTests
@@ -164,11 +189,152 @@ public class QuestionTests
     }
 }
 
+/// <summary>
+/// 题库边界测试：小型/退化/缺年级词库下的出题健壮性。
+/// 通过反射注入私有静态词库（chinese/english），并在 finally 中恢复，避免影响其他测试。
+/// </summary>
+public class QuestionBankEdgeTests
+{
+    static readonly System.Reflection.FieldInfo ZhField =
+        typeof(QuestionBank).GetField("chinese",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+    static readonly System.Reflection.FieldInfo EnField =
+        typeof(QuestionBank).GetField("english",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+    static List<WordEntry> OrigZh() { return (List<WordEntry>)ZhField.GetValue(null); }
+    static List<EnglishEntry> OrigEn() { return (List<EnglishEntry>)EnField.GetValue(null); }
+
+    static void WithBanks(List<WordEntry> zh, List<EnglishEntry> en, Action body)
+    {
+        List<WordEntry> oz = OrigZh();
+        List<EnglishEntry> oe = OrigEn();
+        try
+        {
+            ZhField.SetValue(null, zh);
+            EnField.SetValue(null, en);
+            body();
+        }
+        finally
+        {
+            ZhField.SetValue(null, oz);
+            EnField.SetValue(null, oe);
+        }
+    }
+
+    /// <summary>校验单题合法：选项 2-4 个、互不重复、无占位符（不再出现"拼音?"）、CorrectIndex 有效</summary>
+    static void AssertQuestionValid(Question q, string ctx)
+    {
+        Assert.IsTrue(q != null, ctx + ": 题目为空");
+        Assert.IsTrue(!string.IsNullOrEmpty(q.Prompt), ctx + ": 题干为空");
+        if (q.Type == QType.MathCalc)
+        {
+            Assert.IsTrue(q.Options == null, ctx + ": 口算题不应有选项");
+            Assert.GreaterOrEqual(q.Answer, 0, ctx + ": 口算题答案应 >= 0");
+            return;
+        }
+        Assert.IsTrue(q.Options != null, ctx + ": 选择题缺少选项");
+        Assert.GreaterOrEqual(q.Options.Length, 2, ctx + ": 选项少于 2 个（占位符或唯一选项）");
+        Assert.LessOrEqual(q.Options.Length, 4, ctx + ": 选项超过 4 个");
+        for (int i = 0; i < q.Options.Length; i++)
+        {
+            Assert.IsTrue(!string.IsNullOrEmpty(q.Options[i]), ctx + ": 存在空选项");
+            Assert.IsTrue(q.Options[i].IndexOf('?') < 0, ctx + ": 存在占位符选项 [" + q.Options[i] + "]");
+            for (int j = i + 1; j < q.Options.Length; j++)
+                Assert.IsTrue(q.Options[i] != q.Options[j], ctx + ": 选项重复 [" + q.Options[i] + "]");
+        }
+        Assert.IsTrue(q.CorrectIndex >= 0 && q.CorrectIndex < q.Options.Length, ctx + ": CorrectIndex 越界");
+    }
+
+    static void AssertBatchValid(List<Question> qs, int expected, string ctx)
+    {
+        Assert.AreEqual(expected, qs.Count, ctx + ": 题量");
+        for (int i = 0; i < qs.Count; i++) AssertQuestionValid(qs[i], ctx);
+    }
+
+    static List<WordEntry> TinyChinese()
+    {
+        List<WordEntry> zh = new List<WordEntry>();
+        zh.Add(new WordEntry { Grade = 3, Word = "苹果", Pinyin = "ping guo", Meaning = "水果" });
+        zh.Add(new WordEntry { Grade = 3, Word = "香蕉", Pinyin = "xiang jiao", Meaning = "水果" });
+        return zh;
+    }
+
+    static List<EnglishEntry> TinyEnglish()
+    {
+        List<EnglishEntry> en = new List<EnglishEntry>();
+        en.Add(new EnglishEntry { Grade = 3, En = "apple", Zh = "苹果" });
+        en.Add(new EnglishEntry { Grade = 3, En = "banana", Zh = "香蕉" });
+        return en;
+    }
+
+    // 小型词库：每科只有 2 个词条，干扰项凑不满 4 个。
+    // 修复前会插入 "拼音?" 占位符充当选项；修复后应为 2 个真实选项，无占位符。
+    [Test]
+    public void TinyBankNoPlaceholderOptions()
+    {
+        WithBanks(TinyChinese(), TinyEnglish(), delegate
+        {
+            for (int round = 0; round < 20; round++)
+            {
+                List<Question> qs = QuestionBank.GetBatch(new int[] { 3 },
+                    new Subject[] { Subject.Chinese, Subject.English }, 10);
+                AssertBatchValid(qs, 10, "小型词库 round " + round);
+            }
+        });
+    }
+
+    // 极端退化：词库只有 1 个语文词条，凑不出任何干扰项。
+    // 应退出口算题（而非唯一选项/占位符），且题量仍为 10。
+    [Test]
+    public void DegenerateBankFallsBackToMath()
+    {
+        List<WordEntry> zh = new List<WordEntry>();
+        zh.Add(new WordEntry { Grade = 3, Word = "苹果", Pinyin = "ping guo", Meaning = "水果" });
+        WithBanks(zh, new List<EnglishEntry>(), delegate
+        {
+            List<Question> qs = QuestionBank.GetBatch(new int[] { 3 }, new Subject[] { Subject.Chinese }, 10);
+            AssertBatchValid(qs, 10, "退化词库");
+        });
+    }
+
+    // 选中年级在词库中不存在（外部词库只配了其他年级）：不应抛异常，题量仍为 10。
+    // 修复前 BuildChinesePool 直接返回空列表，会导致整批只有少量题目甚至空批。
+    [Test]
+    public void MissingGradeDoesNotCrash()
+    {
+        List<WordEntry> zh = new List<WordEntry>();
+        zh.Add(new WordEntry { Grade = 5, Word = "苹果", Pinyin = "ping guo", Meaning = "水果" });
+        zh.Add(new WordEntry { Grade = 5, Word = "香蕉", Pinyin = "xiang jiao", Meaning = "水果" });
+        WithBanks(zh, new List<EnglishEntry>(), delegate
+        {
+            List<Question> qs = QuestionBank.GetBatch(new int[] { 3 }, new Subject[] { Subject.Chinese }, 10);
+            AssertBatchValid(qs, 10, "缺年级");
+        });
+    }
+
+    // 内置词库（未注入）全年级全口径：选项必须干净（无占位符、无重复、CorrectIndex 有效）
+    [Test]
+    public void BuiltInBankOptionsClean()
+    {
+        for (int g = 1; g <= 6; g++)
+        {
+            foreach (Subject s in new Subject[] { Subject.Chinese, Subject.Math, Subject.English })
+            {
+                List<Question> qs = QuestionBank.GetBatch(g, s, 10);
+                AssertBatchValid(qs, 10, "内置词库 " + g + " " + s);
+            }
+        }
+    }
+}
+
 public class Program
 {
     public static int Main()
     {
-        int fails = TUnit.Runner.Run(new Type[] { typeof(WindowTests), typeof(QuestionTests) });
+        int fails = TUnit.Runner.Run(new Type[] {
+            typeof(WindowTests), typeof(QuestionTests), typeof(QuestionBankEdgeTests),
+            typeof(HashTests), typeof(MathAnswerTests), typeof(OfflineDeductTests) });
         return fails == 0 ? 0 : 1;
     }
 }

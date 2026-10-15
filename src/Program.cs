@@ -137,6 +137,7 @@ namespace PCLock
         static void Main(string[] args)
         {
             Log("=== PCLock Main start ===");
+            Store.SetLogSink(Log);   // Store（核心层）的日志经此 sink 落到 err.txt；测试构建不编译本文件，Store 自动静默
             Log("ExePath=" + Application.ExecutablePath);
             Log("StartupPath=" + Application.StartupPath);
             Log("Args=" + string.Join(" ", args));
@@ -227,7 +228,10 @@ namespace PCLock
                 string p = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "AppIcon.ico");
                 if (File.Exists(p)) return new Icon(p);
             }
-            catch (Exception) { }
+            catch (Exception ex)
+            {
+                Program.Log("LoadAppIcon 失败: " + ex.Message);
+            }
             return null;
         }
 
