@@ -145,8 +145,7 @@ namespace PCLock
             pinBox.MaxLength = Constants.PinMaxLength;
             pinBox.KeyPress += delegate(object s, KeyPressEventArgs e)
             {
-                // PIN 只能是数字：答案框也只接受数字，允许字母会导致 PIN 永远无法在锁屏界面输入
-                if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar)) e.Handled = true;
+                // 允许数字/字母/特殊符号（规则见 Constants.IsValidPin），仅回车触发验证
                 if (e.KeyChar == (char)13) TryParentPin();
             };
 

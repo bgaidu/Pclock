@@ -245,7 +245,7 @@ namespace PCLock
         GroupBox BuildPinGroup()
         {
             GroupBox gp = new GroupBox();
-            gp.Text = "修改家长 PIN（锁屏界面\"家长入口\"用）";
+            gp.Text = "修改家长密码（4-12 位字母/数字/符号，锁屏家长入口用）";
             gp.Location = new Point(15, 410);
             gp.Size = new Size(440, 90);
             TextBox pin1 = NewBox(90, 26);
@@ -258,9 +258,9 @@ namespace PCLock
             btnPin.Size = new Size(110, 28);
             btnPin.Click += delegate
             {
-                if (pin1.Text.Length < Constants.PinMinLength)
+                if (!Constants.IsValidPin(pin1.Text))
                 {
-                    MessageBox.Show(this, "PIN 至少 " + Constants.PinMinLength + " 位。", "电脑锁");
+                    MessageBox.Show(this, Constants.PinRuleText, "电脑锁");
                     return;
                 }
                 if (pin1.Text != pin2.Text)
@@ -285,7 +285,7 @@ namespace PCLock
         GroupBox BuildUninstallPinGroup()
         {
             GroupBox gu = new GroupBox();
-            gu.Text = "修改卸载密码（卸载本程序时必须输入）";
+            gu.Text = "修改卸载密码（4-12 位字母/数字/符号，卸载时必须输入）";
             gu.Location = new Point(15, 510);
             gu.Size = new Size(440, 90);
             TextBox up1 = NewBox(90, 26);
@@ -298,9 +298,9 @@ namespace PCLock
             btnUn.Size = new Size(110, 28);
             btnUn.Click += delegate
             {
-                if (up1.Text.Length < Constants.PinMinLength)
+                if (!Constants.IsValidPin(up1.Text))
                 {
-                    MessageBox.Show(this, "卸载密码至少 " + Constants.PinMinLength + " 位。", "电脑锁");
+                    MessageBox.Show(this, Constants.PinRuleText, "电脑锁");
                     return;
                 }
                 if (up1.Text != up2.Text)
@@ -461,11 +461,7 @@ namespace PCLock
             b.Width = 120;
             b.PasswordChar = '*';
             b.MaxLength = Constants.PinMaxLength;
-            // 锁屏界面 PIN 输入框只接受数字，这里必须一致，否则含字母的 PIN 在锁屏时无法输入
-            b.KeyPress += delegate(object s, KeyPressEventArgs e)
-            {
-                if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar)) e.Handled = true;
-            };
+            // 允许数字/字母/特殊符号（规则见 Constants.IsValidPin），与锁屏/PIN 验证框保持一致
             return b;
         }
 

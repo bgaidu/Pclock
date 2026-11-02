@@ -32,11 +32,7 @@ namespace PCLock
             box.Width = 290;
             box.PasswordChar = '*';
             box.MaxLength = Constants.PinMaxLength;
-            box.KeyPress += delegate(object s, KeyPressEventArgs e)
-            {
-                // 与锁屏界面输入框保持一致：PIN 只允许数字
-                if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar)) e.Handled = true;
-            };
+            // 允许数字/字母/特殊符号（规则见 Constants.IsValidPin），不再限制为纯数字
 
             Label err = new Label();
             err.ForeColor = Color.Firebrick;

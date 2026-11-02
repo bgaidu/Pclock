@@ -29,12 +29,30 @@ namespace PCLock
 
         // === PIN/密码策略 ===
         public const int PinMinLength = 4;
-        public const int PinMaxLength = 20;
+        public const int PinMaxLength = 12;      // 密码最多 12 位（"12 位以下"）
         public const int PinMaxFails = 5;        // 连续失败次数触发冷却
         public const int PinCooldownSec = 30;    // 全局冷却秒数
         // 25000 次：单次验证约 0.2 秒（UI 线程可接受），同时使 4 位 PIN 的离线枚举成本
         // 相比裸 SHA256 提高两万余倍。不要随意调大——验证在 UI 线程同步执行。
         public const int PinHashIterations = 25000;
+
+        /// <summary>密码规则提示文案（设置界面与消息框共用）</summary>
+        public const string PinRuleText = "密码需为 4-12 位，可包含数字、字母和特殊符号，不能含空格。";
+
+        /// <summary>
+        /// 校验密码是否符合规则：长度 4~12 位，可含数字、字母和特殊符号；
+        /// 不允许空白字符与控制字符。默认密码 1234（纯数字）同样符合该规则。
+        /// </summary>
+        public static bool IsValidPin(string p)
+        {
+            if (string.IsNullOrEmpty(p)) return false;
+            if (p.Length < PinMinLength || p.Length > PinMaxLength) return false;
+            foreach (char c in p)
+            {
+                if (char.IsControl(c) || char.IsWhiteSpace(c)) return false;
+            }
+            return true;
+        }
 
         // === 看门狗/守护线程 ===
         public const int GuardCheckIntervalMs = 3000;   // 守护/看门狗检查间隔
