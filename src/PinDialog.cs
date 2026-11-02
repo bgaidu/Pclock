@@ -59,6 +59,7 @@ namespace PCLock
                     int left = (int)Math.Ceiling((cooldownUntil - DateTime.Now).TotalSeconds);
                     err.Text = "尝试次数过多，请 " + left + " 秒后再试";
                     box.Text = "";
+                    AuditLog.Write("密码验证被冷却阻止：" + title);
                     return;
                 }
                 if (verifying) return;   // 上一次验证仍在后台进行
@@ -79,6 +80,7 @@ namespace PCLock
                             verifying = false;
                             if (passed)
                             {
+                                AuditLog.Write("密码验证成功：" + title);
                                 DialogResult = DialogResult.OK;
                                 Close();
                                 return;
@@ -89,6 +91,7 @@ namespace PCLock
                             if (fails >= Constants.PinMaxFails)
                             {
                                 cooldownUntil = DateTime.Now.AddSeconds(Constants.PinCooldownSec);
+                                AuditLog.Write("密码连续失败：" + title + " 进入 " + Constants.PinCooldownSec + " 秒冷却");
                                 DialogResult = DialogResult.Cancel;
                                 Close();
                             }
@@ -96,6 +99,7 @@ namespace PCLock
                             {
                                 err.Text = "密码错误（还可尝试 " + (Constants.PinMaxFails - fails) + " 次）";
                                 ok.Enabled = true;
+                                AuditLog.Write("密码验证失败：" + title + "（还可尝试 " + (Constants.PinMaxFails - fails) + " 次）");
                             }
                         });
                     }

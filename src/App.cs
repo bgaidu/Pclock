@@ -31,6 +31,7 @@ namespace PCLock
         bool paused;            // 家长临时暂停计时（孩子仍可用，但不再倒计时）
         int usedPending;        // 未落盘的"今日已用"秒数（内存累加，见 FlushUsed）
         int persistFailCount;   // 连续持久化失败次数，达阈值进入安全锁屏（见 OnTick）
+        DateTime lockStartTime; // 本次锁屏开始时间（用于审计日志计算锁屏时长）
         Thread guardThread;
         EventWaitHandle stopEvent; // 供看门狗监听的停止事件
 
@@ -58,6 +59,7 @@ namespace PCLock
             remaining = Store.GetRemaining();
             bool midSession = remaining > 0;      // 有未用完的会话；-1/0 = 全新状态
             if (!midSession) remaining = Store.GetDurationMinutes(currentUser) * 60;
+            AuditLog.Write("程序启动：用户=" + currentUser + "，剩余=" + FormatRemain(remaining));
 
             // 托盘图标
             BuildTray();
@@ -205,12 +207,16 @@ namespace PCLock
         {
             FlushUsed();                              // 进入锁屏前先结掉本次统计
             if (lockForm != null) return;
+            lockStartTime = DateTime.Now;
+            AuditLog.Write("锁屏开始：用户=" + currentUser + "，原因=" +
+                (dueToWindow ? "不在可用时段（硬锁）" : "使用时长用尽/手动锁定"));
             Store.SetLockFlag(1);                     // 持久化：重启后仍处于锁定
             Protection.SetTaskMgrDisabled(true);      // 锁屏期间禁用任务管理器
-            lockForm = new LockForm(dueToWindow);
-            lockForm.UnlockRequested += delegate { Unlock(); };
-            lockForm.Show();
-            lockForm.Activate();
+            LockForm lf = new LockForm(dueToWindow);
+            lf.UnlockRequested += delegate { Unlock(lf.UnlockReason); };
+            lockForm = lf;
+            lf.Show();
+            lf.Activate();
         }
 
         /// <summary>当前登录用户（供锁屏界面判断时段）</summary>
@@ -220,7 +226,10 @@ namespace PCLock
         public bool IsWithinWindow() { return Store.IsWithinWindow(currentUser); }
 
         /// <summary>解锁（答对题或家长PIN成功后调用）。解锁即开始新一轮计时。</summary>
-        public void Unlock()
+        public void Unlock() { Unlock("未知"); }
+
+        /// <summary>解锁并记录解锁方式（答题/家长密码/时段自动等）到审计日志。</summary>
+        public void Unlock(string reason)
         {
             FlushUsed();                               // 新一轮计时开始前先结掉统计
             if (lockForm != null)
@@ -236,6 +245,15 @@ namespace PCLock
             warned5 = warned1 = false;                     // 重置提醒标志
             Protection.SetTaskMgrDisabled(false);
             paused = false;                                // 新会话恢复计时
+
+            string duration = "";
+            if (lockStartTime != default(DateTime))
+            {
+                TimeSpan ts = DateTime.Now - lockStartTime;
+                duration = "，锁屏时长 " + (int)ts.TotalMinutes + " 分 " + ts.Seconds + " 秒";
+                lockStartTime = default(DateTime);
+            }
+            AuditLog.Write("锁屏结束：用户=" + currentUser + "，方式=" + reason + duration);
         }
 
         public void ResetRemaining()

@@ -12,6 +12,8 @@ namespace PCLock
         {
             stopping = true;
             if (timer != null) timer.Stop();
+            AuditLog.Write((uninstall ? "程序卸载" : "程序退出") + "：用户=" + currentUser +
+                (lockForm != null ? "（退出时处于锁屏）" : ""));
             try
             {
                 FlushUsed();                           // 退出前结掉统计（卸载时数据随之删除）

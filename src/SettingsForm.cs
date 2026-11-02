@@ -139,6 +139,7 @@ namespace PCLock
                     {
                         string u = cbUser.Text;
                         Store.SetDurationMinutes(u, (int)arr[i].Tag);
+                        AuditLog.Write("设置修改：用户 " + u + " 每次可用时长 = " + (int)arr[i].Tag + " 分钟");
                         if (u == Store.GetCurrentUser())
                         {
                             if (App.Instance != null) App.Instance.ResetRemaining();
@@ -208,6 +209,13 @@ namespace PCLock
                 if (s2.Count == 0) { MessageBox.Show(this, "请至少选择一个科目。", "电脑锁"); return; }
                 Store.SetGrades(u, gg.ToArray());
                 Store.SetSubjects(u, s2.ToArray());
+                AuditLog.Write("设置修改：用户 " + u + " 年级=[" +
+                    string.Join(",", gg.ConvertAll(delegate(int g) { return g.ToString(); }).ToArray()) +
+                    "]，科目=[" +
+                    string.Join(",", s2.ConvertAll(delegate(int sv)
+                    {
+                        return sv == 1 ? "语文" : sv == 2 ? "数学" : "英语";
+                    }).ToArray()) + "]");
                 MessageBox.Show(this, "已为「" + u + "」保存。下次该用户锁屏生效（当前锁屏不中断）。", "电脑锁",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             };
@@ -235,6 +243,8 @@ namespace PCLock
             saveWin.Click += delegate
             {
                 Store.SetWindow(cbUser.Text, tb.Text.Trim());
+                AuditLog.Write("设置修改：用户 " + cbUser.Text + " 可用时段 = " +
+                    (tb.Text.Trim() == "" ? "全天" : tb.Text.Trim()));
                 MessageBox.Show(this, "已为「" + cbUser.Text + "」保存可用时段。", "电脑锁",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             };
@@ -269,6 +279,7 @@ namespace PCLock
                     return;
                 }
                 Store.SetPin(pin1.Text);
+                AuditLog.Write("设置修改：家长密码已修改");
                 pin1.Text = "";
                 pin2.Text = "";
                 MessageBox.Show(this, "家长 PIN 已修改。", "电脑锁",
@@ -309,6 +320,7 @@ namespace PCLock
                     return;
                 }
                 Store.SetUninstallPin(up1.Text);
+                AuditLog.Write("设置修改：卸载密码已修改");
                 up1.Text = "";
                 up2.Text = "";
                 MessageBox.Show(this, "卸载密码已修改。", "电脑锁",
@@ -342,6 +354,7 @@ namespace PCLock
                     return;
                 }
                 App.Instance.SetPaused(!App.Instance.IsPaused());
+                AuditLog.Write("设置修改：" + (App.Instance.IsPaused() ? "暂停计时" : "继续计时"));
                 btnPause.Text = App.Instance.IsPaused() ? "继续计时" : "暂停计时";
                 MessageBox.Show(this, App.Instance.IsPaused()
                     ? "已暂停计时：孩子仍可使用电脑，但剩余时间不再减少。"
@@ -359,6 +372,7 @@ namespace PCLock
                     return;
                 }
                 App.Instance.AddTime(15);
+                AuditLog.Write("设置修改：本次会话增加 15 分钟");
                 MessageBox.Show(this, "已为本次会话增加 15 分钟使用时间。", "电脑锁",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             };

@@ -13,6 +13,8 @@ namespace PCLock
     {
         public event EventHandler UnlockRequested;
         public bool AllowClose;
+        /// <summary>本次解锁方式（答题/PIN/时段自动），由 App.Unlock 写入审计日志</summary>
+        public string UnlockReason = "未知";
         /// <summary>家长对话框（PIN 验证 / 家长设置）打开期间为 true：暂停锁屏的"抢焦点/抢置顶"，
         /// 否则 UiTick 每 500ms 的 Activate() 会把家长设置窗口重新压到锁屏底层、导致无法操作。</summary>
         public bool SuspendInteraction { get; set; }
@@ -396,6 +398,7 @@ namespace PCLock
             qIndex++;
             if (qIndex >= questions.Count)
             {
+                UnlockReason = "答题全部答对";
                 if (UnlockRequested != null) UnlockRequested(this, EventArgs.Empty);
                 return;
             }
@@ -437,6 +440,8 @@ namespace PCLock
                         pinThreadRunning = false;
                         if (ok)
                         {
+                            UnlockReason = "锁屏家长密码";
+                            AuditLog.Write("密码验证成功：锁屏家长入口解锁");
                             if (UnlockRequested != null) UnlockRequested(this, EventArgs.Empty);
                             return;
                         }
@@ -450,11 +455,13 @@ namespace PCLock
                             lastCooldownTick = Environment.TickCount;
                             pinBox.Enabled = false;
                             pinOkBtn.Enabled = false;
+                            AuditLog.Write("密码连续失败：锁屏家长入口进入 " + Constants.PinCooldownSec + " 秒冷却");
                         }
                         else
                         {
                             pinOkBtn.Enabled = true;
                             pinLabel.Text = "PIN 错误（还可尝试 " + (Constants.PinMaxFails - pinFails) + " 次）";
+                            AuditLog.Write("密码验证失败：锁屏家长入口（还可尝试 " + (Constants.PinMaxFails - pinFails) + " 次）");
                         }
                     });
                 }
@@ -517,6 +524,7 @@ namespace PCLock
             if (dueToWindow && !autoUnlocked && App.Instance != null && App.Instance.IsWithinWindow())
             {
                 autoUnlocked = true;
+                UnlockReason = "进入可用时段自动解锁";
                 if (UnlockRequested != null) UnlockRequested(this, EventArgs.Empty);
             }
         }
