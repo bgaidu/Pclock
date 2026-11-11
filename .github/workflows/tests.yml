@@ -1,9 +1,8 @@
 name: Unit Tests
 
+# 只有打 tag 时才在 GitHub 上编译 PCLock.exe（见 release.yml）。
+# 平时 PR / 手动运行只跑零依赖单测，避免每次 push 都跑一遍 build.bat。
 on:
-  push:
-    branches: ['**']
-    tags-ignore: ['v*']   # 打 tag 的发布构建由 release.yml 负责，避免重复跑
   pull_request:
   workflow_dispatch:
 
@@ -18,27 +17,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      # 单一门禁入口：单测（含题库质量门禁 + 负向变异回归）-> Release -> Debug。
-      # 本地与 CI 复用同一个 tests\gate.bat，避免编译清单/检查项漂移。
-      - name: Quality gate (tests\gate.bat)
+      - name: Unit tests (tests\run.bat)
         shell: cmd
         run: |
-          call tests\gate.bat
+          rem Unit tests only: question-bank quality gate + mutation suite are
+          rem already included in tests\run.bat. Building PCLock.exe is
+          rem reserved for tag pushes; run tests\gate.bat locally for the
+          rem full gate (tests + Release + Debug + manifest).
+          call tests\run.bat
           if errorlevel 1 (
-            echo [ERROR] quality gate failed
+            echo [ERROR] unit tests failed
             exit /b 1
           )
-          echo [OK] quality gate passed
-
-      # 构建失败时 bin\ 下旧 exe 不会自动删除，必须核对产物时间戳，
-      # 否则「编译失败但旧 exe 还在」会被误判为成功（项目曾踩过此坑）。
-      - name: Verify build artifacts are fresh
-        shell: powershell
-        run: |
-          $limit = (Get-Date).AddMinutes(-10)
-          foreach ($p in @('bin\Release\PCLock.exe', 'bin\Debug\PCLock.exe')) {
-            if (-not (Test-Path $p)) { throw "Missing artifact: $p" }
-            $f = Get-Item $p
-            if ($f.LastWriteTime -lt $limit) { throw "Stale artifact (build may have failed, old exe left behind): $p $($f.LastWriteTime)" }
-            Write-Host "$p  $($f.Length) bytes  $($f.LastWriteTime)"
-          }
+          echo [OK] unit tests passed

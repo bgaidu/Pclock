@@ -247,7 +247,7 @@ pclock/
 
 工程自带一个**零依赖的轻量测试框架**（`tests/TUnit.cs`：`[Test]` 特性 + `Assert` + 自动发现运行器），用系统自带的 `csc` 编译即可运行，无需 NuGet / dotnet SDK。
 
-- 运行：双击 `tests/run.bat`，或在项目根目录执行它。CI 中由 `.github/workflows/tests.yml` 在每次 push/PR 自动执行（单测 + `build.bat Release` 双通道）。
+- 运行：双击 `tests/run.bat`，或在项目根目录执行它。GitHub 上仅在 PR / 手动运行时跑单测（`tests.yml`）；**编译 `PCLock.exe` 只在打 `v*` tag 时由 `release.yml` 执行**。本地全量门禁用 `tests\gate.bat`（单测 + Release + Debug）。
 - 覆盖范围（确定性纯逻辑，共 53 项）：
   - `WindowTests`（11 项）：每日时段解析（空=全天、段间空隙、闭区间边界、逗号分隔、非法段忽略、跨午夜时段环绕判断）。
   - `QuestionTests`（7 项）：混合模式每科 ≤4、两科模式每科 ≥3、单科模式全为同科、每批 10 题。
@@ -616,6 +616,9 @@ tests\gate.bat        :: 一键门禁：单测 + Release + Debug + 清单检查
 tests\run.bat         :: 单测（85 项，含 5 项负向变异回归）
 build.bat Release     :: 产物 bin\Release\PCLock.exe（请核对时间戳）
 ```
+
+> **CI 触发约定（2026-11-11 调整）**：GitHub 上只有打 `v*` tag 才编译并发布
+> （`release.yml`，含产物时间戳校验）；PR / 手动运行只跑单测（`tests.yml`），普通 push 不再触发任何 GitHub 编译。
 
 > 测试规模由 53 项增至 **85 项**；上文历史更新日志中的「53 项」为当时口径。
 > 新增 GUI 行为（首次密码、高级规则、练习、休息、使用记录）需按

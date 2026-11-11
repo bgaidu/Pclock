@@ -1,10 +1,11 @@
 name: Build and Release PCLock
 
+# GitHub 编译只在打 tag 时触发；push 普通提交 / PR 不再编译。
+# 去掉 workflow_dispatch：手动重跑发布构建请重新打 tag 或在 Actions 页面 rerun。
 on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -20,45 +21,58 @@ jobs:
       - name: List repository files
         shell: pwsh
         run: |
-          Write-Host "===== 仓库根目录 ====="
+          Write-Host "===== repo root ====="
           Get-ChildItem -Force | Select-Object Mode, Name
           Write-Host ""
-          Write-Host "===== src 目录 ====="
+          Write-Host "===== src ====="
           Get-ChildItem -Recurse src | Select-Object FullName
 
       - name: Build PCLock.exe
         shell: cmd
         run: |
-          rem 复用仓库内的 build.bat 作为唯一编译入口，避免 CI 里的编译清单与脚本漂移。
-          rem build.bat 内部已做 CI 感知（CI=true 时跳过 pause），产物在 bin\Release\。
+          rem Reuse build.bat as the single build entry point.
+          rem It skips pause when CI=true; output goes to bin\Release\.
+          rem Keep this block pure ASCII: cmd.exe reads batch input with the
+          rem system ANSI code page and CJK bytes may be mis-parsed.
+          set CI=true
           call build.bat Release
           if errorlevel 1 (
-            echo [错误] build.bat 编译失败
+            echo [ERROR] build.bat Release failed
             exit /b 1
           )
-
           if not exist bin\Release\PCLock.exe (
-            echo [错误] bin\Release\PCLock.exe 未生成
+            echo [ERROR] bin\Release\PCLock.exe not generated
             dir bin\Release
             exit /b 1
           )
-
-          echo [成功] PCLock.exe 已生成
+          echo [OK] PCLock.exe built
           dir bin\Release\PCLock.exe
+
+      # build.bat does not delete stale outputs on failure: verify the timestamp
+      # so a failed compile with an old exe left behind cannot be treated as OK.
+      - name: Verify build artifact is fresh
+        shell: powershell
+        run: |
+          $f = Get-Item 'bin\Release\PCLock.exe'
+          $limit = (Get-Date).AddMinutes(-10)
+          if ($f.LastWriteTime -lt $limit) {
+            throw "Stale artifact (build may have failed, old exe left behind): $($f.LastWriteTime)"
+          }
+          Write-Host "$($f.Name)  $($f.Length) bytes  $($f.LastWriteTime)"
 
       - name: Package Release
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
-          # 打包整个 bin\Release：build.bat 已把 PCLock.exe.config、chinese.txt、
-          # english.txt、AppIcon.ico 一并复制到该目录，它们必须与 PCLock.exe 同目录。
+          # Package the whole bin\Release: build.bat already copied
+          # PCLock.exe.config, chinese.txt, english.txt and AppIcon.ico there.
           Copy-Item -Path "bin\Release\*" -Destination "release\" -Force -Recurse
           if (-not (Test-Path "release\PCLock.exe")) {
-            Write-Error "release\PCLock.exe 缺失"
+            Write-Error "release\PCLock.exe missing"
             exit 1
           }
           Compress-Archive -Path "release\*" -DestinationPath "PCLock-Release.zip" -Force
-          Write-Host "===== 打包内容 ====="
+          Write-Host "===== package contents ====="
           Get-ChildItem release
 
       - name: Upload ZIP to Artifacts
