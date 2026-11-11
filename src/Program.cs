@@ -191,6 +191,21 @@ namespace PCLock
                 Application.SetCompatibleTextRenderingDefault(false);
                 Log("WinForms init done");
 
+                // P0-1 首次运行强制设置两个密码（消除默认 1234）；旧安装不弹窗
+                Store.Init();
+                if (Store.NeedsFirstPinSetup())
+                {
+                    Log("First-run PIN setup required");
+                    using (FirstRunForm f = new FirstRunForm())
+                    {
+                        if (f.ShowDialog() != DialogResult.OK)
+                        {
+                            Log("First-run PIN setup cancelled, exit.");
+                            return;
+                        }
+                    }
+                }
+
                 Log("Creating App...");
                 App app = new App();
                 Log("App ctor done");

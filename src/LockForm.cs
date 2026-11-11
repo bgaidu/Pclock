@@ -34,9 +34,14 @@ namespace PCLock
         Button pinOkBtn;
         Button pinBackBtn;
 
-        int correctCount;   // 本轮已答对题数
+        int correctCount;   // 本轮连续答对题数
         int qIndex;         // 当前第几题
         List<Question> questions;
+        List<Question> correctQuestions = new List<Question>(); // 本轮答对题（星级奖励结算用）
+        int baseQuestionCount;  // 普通题数量；之后的是加练题
+        int requiredStreak;     // 需连续答对多少道（默认 = 题量，即全部答对）
+        string user;
+        string hardReason;       // 非空 = 额度用尽/护眼休息/时间异常等硬锁（不自动按时段解锁）
         int wrongLeft;      // 答错后的冷却秒数
         int pinFails;
         int pinCooldown;
@@ -45,11 +50,19 @@ namespace PCLock
         LowLevelHook hook;
         Timer uiTimer;
         bool dueToWindow;   // true=因"不在每日可用时段"而锁（硬锁）
-        bool autoUnlocked;  // 时段开始自动解锁只触发一次
+        bool autoUnlocked;  // 自动解锁只触发一次
 
-        public LockForm(bool dueToWindow = false)
+        Label feedbackLabel;    // 答错后的正确答案 / 解析
+        Button continueBtn;    // 孩子确认反馈后继续
+        Button practiceBtn;    // 练习模式（不解锁、不消耗额度）
+        Button tempPassBtn;     // 家长临时放行 N 分钟
+        Label restLabel;        // 护眼休息倒计时
+
+        public LockForm(bool dueToWindow = false, string hardReason = null)
         {
             this.dueToWindow = dueToWindow;
+            this.hardReason = hardReason;
+            this.user = (App.Instance != null) ? App.Instance.CurrentUser : Store.GetCurrentUser();
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
             Rectangle vs = SystemInformation.VirtualScreen;
@@ -64,6 +77,7 @@ namespace PCLock
             BuildParentEntry();
             BuildParentSettingsEntry();
             BuildOptionButtons();
+            BuildExtraControls();
             AddCoreControls();
 
             Resize += delegate { LayoutControls(); };
@@ -133,7 +147,7 @@ namespace PCLock
 
             parentPanel = new Panel();
             parentPanel.BorderStyle = BorderStyle.FixedSingle;
-            parentPanel.Size = new Size(380, 150);
+            parentPanel.Size = new Size(380, 195);
             parentPanel.BackColor = Color.FromArgb(30, 38, 60);
 
             pinLabel = MakeLabel("家长 PIN：", 12, FontStyle.Regular, Color.White);
@@ -163,10 +177,19 @@ namespace PCLock
             pinBackBtn.Size = new Size(120, 34);
             pinBackBtn.Click += delegate { parentPanel.Visible = false; };
 
+            // P0-5：家长可只临时放行 N 分钟，而不是重置为完整一轮时长
+            tempPassBtn = new Button();
+            tempPassBtn.Text = "临时放行 " + Store.GetTempPassMinutes(user) + " 分钟";
+            tempPassBtn.Font = new Font("Microsoft YaHei", 9);
+            tempPassBtn.Location = new Point(20, 145);
+            tempPassBtn.Size = new Size(330, 34);
+            tempPassBtn.Click += delegate { TryParentPin(true); };
+
             parentPanel.Controls.Add(pinLabel);
             parentPanel.Controls.Add(pinBox);
             parentPanel.Controls.Add(pinOkBtn);
             parentPanel.Controls.Add(pinBackBtn);
+            parentPanel.Controls.Add(tempPassBtn);
             parentPanel.Visible = false;
         }
 
@@ -227,6 +250,46 @@ namespace PCLock
             Controls.Add(meaningLabel);
         }
 
+        /// <summary>P0-2 / P0-5 / P1-9：答题反馈、继续按钮、练习入口、休息倒计时</summary>
+        void BuildExtraControls()
+        {
+            feedbackLabel = MakeLabel("", 15, FontStyle.Regular, Color.FromArgb(255, 214, 140));
+            feedbackLabel.Visible = false;
+            Controls.Add(feedbackLabel);
+
+            continueBtn = new Button();
+            continueBtn.Text = "继续答题";
+            continueBtn.Font = new Font("Microsoft YaHei", 11);
+            continueBtn.Size = new Size(140, 34);
+            continueBtn.Visible = false;
+            continueBtn.Click += delegate
+            {
+                feedbackLabel.Visible = false;
+                continueBtn.Visible = false;
+                ShowCurrentQuestion();
+                UpdateStatus();
+            };
+            Controls.Add(continueBtn);
+
+            practiceBtn = new Button();
+            practiceBtn.Text = "练习模式";
+            practiceBtn.Font = new Font("Microsoft YaHei", 9);
+            practiceBtn.AutoSize = true;
+            practiceBtn.ForeColor = Color.DimGray;
+            practiceBtn.Visible = Store.IsPracticeEnabled(user);
+            practiceBtn.Click += delegate
+            {
+                this.SuspendInteraction = true;
+                try { if (App.Instance != null) App.Instance.OpenPractice(); }
+                finally { this.SuspendInteraction = false; }
+            };
+            Controls.Add(practiceBtn);
+
+            restLabel = MakeLabel("", 18, FontStyle.Bold, Color.FromArgb(170, 220, 255));
+            restLabel.Visible = false;
+            Controls.Add(restLabel);
+        }
+
         void AddCoreControls()
         {
             Controls.Add(titleLabel);
@@ -241,10 +304,22 @@ namespace PCLock
 
         void ApplyDueToWindowUI()
         {
-            titleLabel.Text = "当前不在使用时段";
-            string w = (App.Instance != null) ? Store.GetWindow(App.Instance.CurrentUser) : "";
-            questionLabel.Text = string.IsNullOrWhiteSpace(w) ? "当前不在允许使用时段" : ("允许使用时段：\n" + w);
-            statusLabel.Text = "时段开始后自动解锁，或由家长输入 PIN 解锁。";
+            if (!string.IsNullOrEmpty(hardReason))
+            {
+                titleLabel.Text = hardReason;
+                string rules = Store.GetRules(user);
+                questionLabel.Text = string.IsNullOrWhiteSpace(rules)
+                    ? "请使用家长 PIN 解锁" : ("当前规则：\n" + rules);
+                statusLabel.Text = "休息结束后自动解锁，或由家长输入 PIN / 临时放行。";
+                restLabel.Visible = hardReason.IndexOf("休息") >= 0;
+            }
+            else
+            {
+                titleLabel.Text = "当前不在使用时段";
+                string w = Store.GetWindow(user);
+                questionLabel.Text = string.IsNullOrWhiteSpace(w) ? "当前不在允许使用时段" : ("允许使用时段：\n" + w);
+                statusLabel.Text = "时段开始后自动解锁，或由家长输入 PIN 解锁。";
+            }
             answerBox.Visible = false;
             submitBtn.Visible = false;
             meaningLabel.Visible = false;
@@ -310,16 +385,36 @@ namespace PCLock
             settingsBtn.Top = ClientSize.Height - settingsBtn.Height - 24;
             parentPanel.Left = cx - parentPanel.Width / 2;
             parentPanel.Top = y + 230;
+
+            feedbackLabel.Left = cx - feedbackLabel.Width / 2;
+            feedbackLabel.Top = statusLabel.Bottom + 18;
+            continueBtn.Left = cx - continueBtn.Width / 2;
+            continueBtn.Top = feedbackLabel.Bottom + 12;
+            restLabel.Left = cx - restLabel.Width / 2;
+            restLabel.Top = questionLabel.Bottom + 20;
+            practiceBtn.Left = 24;
+            practiceBtn.Top = ClientSize.Height - practiceBtn.Height - 62;
         }
 
         void StartBatch()
         {
-            int[] grades = Store.GetGrades();
-            int[] subjInts = Store.GetSubjects();
+            int[] grades = Store.GetGrades(user);
+            int[] subjInts = Store.GetSubjects(user);
             Subject[] subs = new Subject[subjInts.Length];
             for (int i = 0; i < subjInts.Length; i++) subs[i] = (Subject)subjInts[i];
-            questions = QuestionBank.GetBatch(grades, subs, Constants.TotalQuestions);
+            int count = Store.GetQuestionCount(user);          // P0-7 题量可配（默认 10）
+            requiredStreak = Store.GetRequiredStreak(user);     // 默认等于题量 = 全部答对
+            baseQuestionCount = count;
+            questions = QuestionBank.GetBatch(grades, subs, count);
+
+            // P0-6 加练池：欠的题追加到本批尾部，必须全部答对才能解锁；跨天/重启保留
+            PracticeState ps = Store.GetPracticeState(user);
+            if (ps.ExtraPending > 0)
+                questions.AddRange(QuestionBank.GetBatch(grades, subs, ps.ExtraPending));
+
             qIndex = 0;
+            correctCount = 0;
+            correctQuestions.Clear();
             ShowCurrentQuestion();
             UpdateStatus();
         }
@@ -329,6 +424,7 @@ namespace PCLock
             if (questions == null || questions.Count == 0) return;
             if (qIndex >= questions.Count) qIndex = questions.Count - 1;
             Question q = questions[qIndex];
+            feedbackLabel.Visible = false;   // 进入下一题时清掉上一次的答错反馈
             questionLabel.Text = q.Prompt;
             if (q.Type == QType.MathCalc)
             {
@@ -362,8 +458,11 @@ namespace PCLock
                 Subject s = questions[qIndex].Subject;
                 subj = (s == Subject.Chinese) ? "语文" : (s == Subject.Math) ? "数学" : "英语";
             }
-            statusLabel.Text = "共 " + Constants.TotalQuestions + " 题（" + subj + "），全部答对即可解锁（当前第 " + cur +
-                " 题，已答对 " + correctCount + " 题）";
+            string extra = (questions.Count > baseQuestionCount)
+                ? " + " + (questions.Count - baseQuestionCount) + " 道加练题" : "";
+            string phase = (qIndex >= baseQuestionCount && questions.Count > baseQuestionCount) ? "（加练）" : "";
+            statusLabel.Text = "共 " + baseQuestionCount + " 题" + extra + "（" + subj + "），需连续答对 " +
+                requiredStreak + " 道" + phase + "（当前第 " + cur + " 题，已连对 " + correctCount + " 题）";
         }
 
         void SubmitAnswer()
@@ -394,33 +493,74 @@ namespace PCLock
 
         void OnCorrect()
         {
+            Question answered = questions[qIndex];
+            correctQuestions.Add(answered);
+            if (qIndex >= baseQuestionCount && questions.Count > baseQuestionCount)
+            {
+                // 加练题答对：逐道扣除待加练数（跨天 / 重启保留）
+                PracticeState ps = ExtraPractice.OnExtraCorrect(Store.GetPracticeState(user));
+                Store.SetPracticeState(user, ps);
+            }
             correctCount++;
             qIndex++;
-            if (qIndex >= questions.Count)
+            if (qIndex >= questions.Count) { FinishBatch(); return; }
+            if (qIndex < baseQuestionCount && correctCount >= requiredStreak)
             {
-                UnlockReason = "答题全部答对";
-                if (UnlockRequested != null) UnlockRequested(this, EventArgs.Empty);
-                return;
+                // 达到连续答对目标：跳过剩余普通题，进入加练题；没有加练题则直接解锁
+                if (questions.Count > baseQuestionCount) qIndex = baseQuestionCount;
+                else { FinishBatch(); return; }
             }
             ShowCurrentQuestion();
             UpdateStatus();
         }
 
+        /// <summary>结算本批：星级奖励写入待结算秒数，由 App.Unlock 一次性取出（未启用时恒为 0）</summary>
+        void FinishBatch()
+        {
+            UnlockReason = "答题达标（连续答对 " + correctCount + " 道）";
+            int reward = 0;
+            if (Store.IsStarRewardEnabled(user))
+                reward = StarReward.RewardSeconds(correctQuestions, Store.GetStarRewards(user));
+            Store.SetPendingReward(reward);
+            if (UnlockRequested != null) UnlockRequested(this, EventArgs.Empty);
+        }
+
         void OnWrong()
         {
-            // 答错一题：整批清零，从第 1 题重新开始
+            // 防作弊策略不变：答错整批清零、从第 1 题重新开始。
+            // 新增：累计错误达阈值时增加加练题（跨天/重启保留），并展示正确答案与解析。
+            Question wrong = questions[qIndex];
+            PracticeState ps = Store.GetPracticeState(user);
+            ps = ExtraPractice.OnWrong(ps, Store.GetExtraThreshold(user), Store.GetExtraPerThreshold(user));
+            Store.SetPracticeState(user, ps);
+
             correctCount = 0;
-            qIndex = 0;
-            ShowCurrentQuestion();
+            correctQuestions.Clear();
+            StartBatch();                 // 按最新的加练池重建题目
             wrongLeft = Constants.WrongCooldownSec;
             lastCooldownTick = Environment.TickCount;
             answerBox.Enabled = false;
             submitBtn.Enabled = false;
             foreach (Button b in optBtns) b.Enabled = false;
-            statusLabel.Text = "回答错误，全部清零重新开始，请 " + Constants.WrongCooldownSec + " 秒后再试";
+
+            if (Store.IsFeedbackEnabled(user))
+            {
+                feedbackLabel.Text = AnswerFeedback.Build(wrong);
+                feedbackLabel.Visible = true;
+                continueBtn.Visible = true;
+                continueBtn.Enabled = false;   // 冷却结束后才可点
+                statusLabel.Text = "回答错误，全部清零重新开始，请 " + Constants.WrongCooldownSec + " 秒后点「继续答题」";
+            }
+            else
+            {
+                statusLabel.Text = "回答错误，全部清零重新开始，请 " + Constants.WrongCooldownSec + " 秒后再试";
+            }
+            LayoutControls();
         }
 
-        void TryParentPin()
+        void TryParentPin() { TryParentPin(false); }
+
+        void TryParentPin(bool tempPass)
         {
             if (pinCooldown > 0) return;
             if (pinThreadRunning) return;
@@ -440,6 +580,15 @@ namespace PCLock
                         pinThreadRunning = false;
                         if (ok)
                         {
+                            if (tempPass)
+                            {
+                                int minutes = Store.GetTempPassMinutes(user);
+                                UnlockReason = "家长临时放行 " + minutes + " 分钟";
+                                AuditLog.Write("密码验证成功：锁屏家长入口临时放行 " + minutes + " 分钟");
+                                Store.ClearRest();
+                                if (App.Instance != null) App.Instance.TempPass(minutes);
+                                return;
+                            }
                             UnlockReason = "锁屏家长密码";
                             AuditLog.Write("密码验证成功：锁屏家长入口解锁");
                             if (UnlockRequested != null) UnlockRequested(this, EventArgs.Empty);
@@ -496,6 +645,7 @@ namespace PCLock
                             answerBox.Enabled = true;
                             submitBtn.Enabled = true;
                             foreach (Button b in optBtns) b.Enabled = true;
+                            if (continueBtn.Visible) continueBtn.Enabled = true;
                             UpdateStatus();
                         }
                         else
@@ -520,12 +670,42 @@ namespace PCLock
                 }
             }
 
-            // 时段外硬锁：一旦进入允许时段，自动解锁（开始新一轮计时）
-            if (dueToWindow && !autoUnlocked && App.Instance != null && App.Instance.IsWithinWindow())
+            // 护眼休息倒计时（UTC 截止，重启不失效）
+            if (restLabel.Visible)
             {
-                autoUnlocked = true;
-                UnlockReason = "进入可用时段自动解锁";
-                if (UnlockRequested != null) UnlockRequested(this, EventArgs.Empty);
+                int left = RestCooldown.RemainingSeconds(Store.GetRestUntilUtc(), DateTime.UtcNow.Ticks);
+                restLabel.Text = left > 0
+                    ? "还需休息 " + (left / 60) + " 分 " + (left % 60) + " 秒"
+                    : "休息结束，正在解锁…";
+                restLabel.Left = ClientSize.Width / 2 - restLabel.Width / 2;
+            }
+
+            // 硬锁自动解锁：普通时段锁 → 进入允许时段；护眼休息 → 截止时间到；
+            // 额度用尽 / 时间异常 → 不自动解锁，必须家长 PIN（避免靠等待绕过）。
+            if (dueToWindow && !autoUnlocked && App.Instance != null)
+            {
+                bool canAuto = false;
+                string reason = "进入可用时段自动解锁";
+                if (!string.IsNullOrEmpty(hardReason))
+                {
+                    if (hardReason.IndexOf("休息") >= 0 &&
+                        !RestCooldown.IsResting(Store.GetRestUntilUtc(), DateTime.UtcNow.Ticks))
+                    {
+                        canAuto = true;
+                        reason = "护眼休息结束自动解锁";
+                    }
+                }
+                else
+                {
+                    WindowDecision wd = WindowRules.Evaluate(Store.GetRules(user), DateTime.Now);
+                    canAuto = wd.HasRules ? !wd.HardLock : App.Instance.IsWithinWindow();
+                }
+                if (canAuto)
+                {
+                    autoUnlocked = true;
+                    UnlockReason = reason;
+                    if (UnlockRequested != null) UnlockRequested(this, EventArgs.Empty);
+                }
             }
         }
 

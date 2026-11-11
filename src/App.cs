@@ -120,18 +120,73 @@ namespace PCLock
         {
             if (stopping || lockForm != null) return;   // 锁屏/退出中不计时（避免退出过程中再次触发 LockNow）
             if (paused) { tray.Text = "电脑锁 - 已暂停"; return; }
-            // 每日时段：不在允许时段内则强制锁屏（硬锁），且不计时、不扣时长（家长暂停时例外，已在上行处理）
-            if (!Store.IsWithinWindow(currentUser))
+
+            DateTime now = DateTime.Now;
+            long utcNow = DateTime.UtcNow.Ticks;
+
+            // P1-12 时间回拨主动检测（默认关闭）。UTC 墙钟只记录、不参与倒计时，
+            // 因此与既有「改系统时间不能加时」的断电折算逻辑互不冲突。
+            if (Store.IsAntiTamperEnabled())
+            {
+                long last = Store.GetLastKnownUtc();
+                if (TimeTamper.IsBackward(last, utcNow, Constants.TimeTamperToleranceSec))
+                {
+                    if (!Store.IsTamperLocked())
+                    {
+                        Store.SetTamperLock(1);
+                        AuditLog.Write("检测到系统时间大幅回拨，进入保护性锁定");
+                        Program.Log("OnTick: 时间回拨超过容差，锁定");
+                    }
+                }
+                else Store.SetLastKnownUtc(utcNow);
+            }
+
+            // P0-5 护眼休息 / 时间异常：截止前硬锁，不计时、不扣时长（UTC 截止，重启不失效）
+            long restUntil = Store.GetRestUntilUtc();
+            if (Store.IsTamperLocked() || RestCooldown.IsResting(restUntil, utcNow))
+            {
+                if (lockForm == null)
+                    LockNow(true, Store.IsTamperLocked() ? "系统时间异常，保护性锁定" : "护眼休息时间");
+                return;
+            }
+
+            // P0-4 时段：配置了新的多规则串则优先；否则完全沿用旧的 Win 字符串语义（旧安装行为不变）
+            WindowDecision wd = WindowRules.Evaluate(Store.GetRules(currentUser), now);
+            if (wd.HasRules)
+            {
+                if (wd.HardLock) { if (lockForm == null) LockNow(true); return; }
+                if (wd.FreeUse) { tray.Text = "电脑锁 - 自由使用（不计时）"; return; }
+            }
+            else if (!Store.IsWithinWindow(currentUser))
             {
                 if (lockForm == null) LockNow(true);
                 return;
             }
+
+            // P0-3 每日总额 / 每日解锁次数：达到上限后硬锁（仅家长 PIN 可临时放行）
+            if (DailyQuota.ShouldLock(Store.GetUsedToday(currentUser),
+                    Store.GetDailyLimitMinutes(currentUser),
+                    Store.GetUnlockCountToday(currentUser), Store.GetUnlockLimit(currentUser)))
+            {
+                if (lockForm == null) LockNow(true, "今日使用额度已用完");
+                return;
+            }
+
             remaining--;
             usedPending++;   // 统计今日已用：仅内存累加，落盘见 FlushUsed
             // 用范围判断而非精确相等，避免 Timer 精度漂移跳过提醒
             if (!warned5 && remaining <= Constants.Warn5MinSec) { Warn("电脑还剩 5 分钟使用时间"); warned5 = true; }
             if (!warned1 && remaining <= Constants.Warn1MinSec) { Warn("电脑还剩 1 分钟使用时间"); warned1 = true; }
-            if (remaining <= 0) { FlushUsed(); LockNow(false); return; }
+            if (remaining <= 0)
+            {
+                FlushUsed();
+                BeginRestIfEnabled();
+                if (RestCooldown.IsResting(Store.GetRestUntilUtc(), DateTime.UtcNow.Ticks))
+                    LockNow(true, "护眼休息时间");
+                else
+                    LockNow(false);
+                return;
+            }
             if (remaining % Constants.PersistIntervalSec == 0)
             {
                 try
@@ -170,8 +225,22 @@ namespace PCLock
             if (usedPending <= 0) return;
             int n = usedPending;
             usedPending = 0;
-            try { Store.AddUsedSeconds(currentUser, n); }
+            try
+            {
+                Store.AddUsedSeconds(currentUser, n);
+                // P1-10：按天落盘累计秒数，供 7 天使用记录视图读取（覆盖写，不额外增加写次数上限）
+                Store.RecordUsageDay(currentUser, DateTime.Now, Store.GetUsedToday(currentUser));
+            }
             catch (Exception ex) { Program.Log("FlushUsed 失败: " + ex.Message); }
+        }
+
+        /// <summary>P0-5：时长用尽时按配置进入护眼休息（截止时间戳 UTC 持久化，重启不失效）</summary>
+        void BeginRestIfEnabled()
+        {
+            int minutes = Store.GetRestMinutes(currentUser);
+            if (minutes <= 0) return;
+            Store.SetRestUntilUtc(RestCooldown.Deadline(DateTime.UtcNow.Ticks, minutes));
+            AuditLog.Write("护眼休息开始：" + minutes + " 分钟");
         }
 
         static string FormatRemain(int sec)
@@ -196,14 +265,17 @@ namespace PCLock
         /// <summary>进入锁屏（到时锁定 / 开机带锁标记 / 手动锁定都走这里）。默认按当前时段状态判定原因。</summary>
         public void LockNow()
         {
-            LockNow(!Store.IsWithinWindow(currentUser));
+            LockNow(!Store.IsWithinWindow(currentUser), null);
         }
 
+        public void LockNow(bool dueToWindow) { LockNow(dueToWindow, null); }
+
         /// <summary>
-        /// 进入锁屏。dueToWindow=true 表示因"不在每日可用时段"而锁：
-        /// 硬锁——禁用答题，仅家长 PIN 或时段开始可解，且期间不计时不扣时长。
+        /// 进入锁屏。dueToWindow=true 表示硬锁（禁用答题，仅家长 PIN 或条件满足时自动解锁，
+        /// 期间不计时不扣时长）；reason 非空时用于区分额度用尽 / 护眼休息 / 时间异常等硬锁原因，
+        /// 此时不启用「进入允许时段自动解锁」。
         /// </summary>
-        public void LockNow(bool dueToWindow)
+        public void LockNow(bool dueToWindow, string reason)
         {
             FlushUsed();                              // 进入锁屏前先结掉本次统计
             if (lockForm != null) return;
@@ -212,7 +284,8 @@ namespace PCLock
                 (dueToWindow ? "不在可用时段（硬锁）" : "使用时长用尽/手动锁定"));
             Store.SetLockFlag(1);                     // 持久化：重启后仍处于锁定
             Protection.SetTaskMgrDisabled(true);      // 锁屏期间禁用任务管理器
-            LockForm lf = new LockForm(dueToWindow);
+            if (!string.IsNullOrEmpty(reason)) AuditLog.Write("硬锁原因：" + reason);
+            LockForm lf = new LockForm(dueToWindow, reason);
             lf.UnlockRequested += delegate { Unlock(lf.UnlockReason); };
             lockForm = lf;
             lf.Show();
@@ -239,12 +312,17 @@ namespace PCLock
                 lockForm = null;
             }
             Store.SetLockFlag(0);
-            remaining = Store.GetDurationMinutes(currentUser) * 60;
+            // P1-8：星级奖励在解锁时一次性结算（未启用时恒为 0，行为不变）
+            int reward = Store.TakePendingReward();
+            remaining = Store.GetDurationMinutes(currentUser) * 60 + reward;
             Store.SetRemaining(remaining);
             Store.SetLastSeenUtc(DateTime.UtcNow.Ticks);   // 新会话从现在起算
             warned5 = warned1 = false;                     // 重置提醒标志
             Protection.SetTaskMgrDisabled(false);
             paused = false;                                // 新会话恢复计时
+            Store.ClearRest();                              // P0-5 家长解锁即结束休息
+            Store.SetTamperLock(0);                         // P1-12 家长解锁清除时间异常锁定
+            Store.IncrementUnlockCount(currentUser);        // P0-3 今日解锁次数（跨天自动归零）
 
             string duration = "";
             if (lockStartTime != default(DateTime))
@@ -275,6 +353,26 @@ namespace PCLock
             remaining += minutes * 60;
             if (remaining < 0) remaining = 0;
             Store.SetRemaining(remaining);
+        }
+
+        /// <summary>P0-5：家长临时放行 N 分钟（不重置为完整一轮时长，到点再次锁定）</summary>
+        public void TempPass(int minutes)
+        {
+            Unlock("家长临时放行 " + minutes + " 分钟");
+            remaining = minutes * 60;
+            Store.SetRemaining(remaining);
+            Store.SetLastSeenUtc(DateTime.UtcNow.Ticks);
+            warned5 = warned1 = false;
+        }
+
+        /// <summary>P1-9：练习模式入口（不解锁、不消耗额度；主计时继续，不构成绕过口子）</summary>
+        public void OpenPractice()
+        {
+            try
+            {
+                using (PracticeForm pf = new PracticeForm()) pf.ShowDialog();
+            }
+            catch (Exception ex) { Program.Log("OpenPractice 失败: " + ex.Message); }
         }
     }
 }

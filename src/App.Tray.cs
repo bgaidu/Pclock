@@ -17,6 +17,14 @@ namespace PCLock
             ContextMenuStrip menu = new ContextMenuStrip();
             menu.Items.Add("设置…（需家长PIN）", null, delegate { ShowSettings(); });
             menu.Items.Add("立即锁定", null, delegate { LockNow(); });
+            // P1-9 练习模式：不解锁、不消耗额度，主倒计时照常运行（默认关闭时不显示）
+            if (Store.IsPracticeEnabled(currentUser))
+                menu.Items.Add("练习模式（不解锁）", null, delegate { OpenPractice(); });
+            // P1-10 使用记录
+            menu.Items.Add("使用记录（7 天）", null, delegate
+            {
+                using (UsageForm uf = new UsageForm()) uf.ShowDialog();
+            });
             tray.ContextMenuStrip = menu;
             tray.DoubleClick += delegate { ShowSettings(); };
         }
@@ -35,6 +43,10 @@ namespace PCLock
                     ok = (pd.ShowDialog() == DialogResult.OK);
                 }
                 if (!ok) return;
+                // P0-1：旧安装可能仍在用默认 PIN，进设置时提醒家长立即修改
+                if (Store.IsDefaultPinStillInUse())
+                    MessageBox.Show("当前仍在使用默认密码 1234，请立即修改家长 PIN 与卸载密码。",
+                        "电脑锁", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 using (SettingsForm sf = new SettingsForm()) sf.ShowDialog();
             }
             finally

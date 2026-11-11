@@ -63,6 +63,13 @@ namespace PCLock
         // === UI ===
         public const int UiTimerIntervalMs = 500; // LockForm 保持全屏/焦点定时器
 
+        // === 新增策略默认值（P0/P1，全部默认关闭）===
+        public const int DefaultTempPassMinutes = 15;      // 家长临时放行分钟数
+        public const string DefaultStarRewards = "1,2,3,4,5"; // 1-5 星每题奖励分钟
+        public const int TimeTamperToleranceSec = 300;      // 回拨容差：5 分钟内不误报
+        public const int UsageHistoryDays = 7;             // 使用记录统计天数
+        public const int DefaultRestMinutes = 10;          // 护眼休息建议值（配置为 0 时不启用）
+
         // === 默认值 ===
         public const int DefaultGrade = 3;
         public const int DefaultSubject = (int)Subject.Mixed; // 0 = 混合随机

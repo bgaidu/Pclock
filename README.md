@@ -565,3 +565,58 @@ pclock/
 
 - **锁屏期间 Timer 空转**（`App.cs`）：`OnTick` 首行 `lockForm != null` 即 `return`，开销可忽略。
   加 `Stop()/Start()` 反而有进程崩溃后 Timer 永不自启的风险，保留当前设计。
+
+---
+
+## 2026-11-11 — 吸收同类项目后的 P0 / P1 批次
+
+参考 [StudyOnTV](https://github.com/chadyi/StudyOnTV)、
+[CleanTV-With-ChildLock](https://github.com/zhbcher/CleanTV-With-ChildLock)、
+[PoHW](https://github.com/jagerzhang/Pohw) 三家同类工具，结合本项目 Windows / .NET 4 / 零依赖
+的约束做了取舍。**所有新增规则默认关闭或保持旧值**，覆盖安装行为不变；防作弊高风险区
+（DACL 字节、答错清零、PBKDF2 25000、UTC 折算、500ms 置顶）一律未动。
+完整边界说明见 [`docs/能力边界与不做什么.md`](docs/能力边界与不做什么.md)。
+
+### 新增能力
+
+| 批次 | 能力 | 入口 / 说明 |
+|---|---|---|
+| P0-1 | 首次运行强制设置家长 PIN 与卸载密码（禁用默认 1234） | 新安装首次启动弹窗；旧安装进设置时提醒 |
+| P0-2 | 答错显示正确答案与解析，孩子点「继续」再重来 | 默认开启；**不改变答错清零 + 5 秒冷却** |
+| P0-3 | 每日总时长上限 / 每日解锁次数上限，跨天重置 | 高级规则 → 时间与额度 |
+| P0-4 | 多规则时段（星期 + 时间窗 + 跨午夜）与两种语义 | `1-5\|17:00-21:00@quiz;6,7\|08:00-22:00`；`@quiz` = 仅时段内需答题，时段外自由不扣时长 |
+| P0-5 | 护眼强制休息（UTC 截止、重启不失效）+ 家长临时放行 N 分钟 | 时长用尽后进入休息；锁屏家长入口新增「临时放行」 |
+| P0-6 | 累计答错加练池（跨天 / 重启保留，答对逐道扣除） | 高级规则 → 答题与奖励；未清完加练题不能解锁 |
+| P0-7 | 题量 / 需连续答对题数可配 | 默认 10 题 / 连对 10 道（= 全部答对），答错仍清零 |
+| P1-8 | 题库治理：难度分档、星级时长奖励、年级防超纲、质量门禁、JSON 导入导出 | 高级规则 → 题库与记录；`chinese.txt` / `english.txt` 仍优先 |
+| P1-9 | 练习模式（不解锁、不消耗额度、倒计时继续） | 托盘 / 锁屏界面（默认关闭） |
+| P1-10 | 7 天使用记录柱状图 + CSV 导出 | 设置菜单「使用记录」/ 托盘菜单 |
+| P1-11 | 工程化：负向变异回归、题库质量门禁、`tests\gate.bat`、CI 产物时间戳校验、发布证书指纹校验 | `sign.bat` 可选环境变量 `PCLOCK_EXPECTED_CERT_SHA256` |
+| P1-12 | 时间回拨主动检测（默认关闭，5 分钟容差） | 高级规则 → 时间与额度；触发后需家长 PIN 解除 |
+
+**未采纳**（理由见边界文档）：扫码局域网 Web 管理 / 内置 HTTP 服务、AI 批改与在线题库源、
+LaTeX/手写/语音输入、TV 遥控器虚拟键盘、大人/儿童开机双选、Job/Alarm/ADB 外部看门狗自愈。
+
+### 新增 / 修改文件
+
+- 纯逻辑（可单测）：`src/Policy.cs`、`src/BankIo.cs`、`src/QuestionPolicy.cs`
+- 配置持久化：`src/Store.Extras.cs`（`Store` 改为 `partial`）
+- UI：`src/FirstRunForm.cs`、`src/AdvancedSettingsForm.cs`、`src/PracticeForm.cs`、`src/UsageForm.cs`
+- 接线：`src/App.cs`、`src/App.Tray.cs`、`src/LockForm.cs`、`src/SettingsForm.cs`、
+  `src/Program.cs`、`src/Constants.cs`
+- 测试：`tests/PolicyTests.cs`（含 `MutationTests`）、`tests/BankIoTests.cs`、
+  `tests/QuestionPolicyTests.cs`，已登记 `tests\run.bat` 与 `UnitTests.cs` 注册表
+- 门禁 / 文档：`tests/gate.bat`、`.github/workflows/tests.yml`、`sign.bat`、
+  `docs/能力边界与不做什么.md`、`docs/回归验证清单.md`
+
+### 验证与运行
+
+```bat
+tests\gate.bat        :: 一键门禁：单测 + Release + Debug + 清单检查
+tests\run.bat         :: 单测（84 项，含 5 项负向变异回归）
+build.bat Release     :: 产物 bin\Release\PCLock.exe（请核对时间戳）
+```
+
+> 测试规模由 53 项增至 **84 项**；上文历史更新日志中的「53 项」为当时口径。
+> 新增 GUI 行为（首次密码、高级规则、练习、休息、使用记录）需按
+> `docs/回归验证清单.md` B17–B24 在管理员真机逐项验证，代理环境无法完成。

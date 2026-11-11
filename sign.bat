@@ -51,5 +51,23 @@ if errorlevel 1 ( echo SIGN FAILED & exit /b 1 )
 
 echo Verifying...
 %SIGNTOOL% verify /pa /v "%EXE%"
+if errorlevel 1 ( echo VERIFY FAILED & exit /b 1 )
+
+rem ---------------------------------------------------------------------------
+rem Optional release-certificate pinning (P1-11): set the env var to the
+rem expected SHA-256 thumbprint of the release certificate. A different
+rem keystore would break over-the-top installs / trust, so fail loudly.
+rem Do not wrap the PowerShell line in an if (...) block: the parentheses
+rem inside the command would break cmd.exe block parsing.
+rem ---------------------------------------------------------------------------
+if not defined PCLOCK_EXPECTED_CERT_SHA256 goto :nocertpin
+set PCLOCK_SIGN_EXE=%EXE%
+powershell -NoProfile -Command "$sig = Get-AuthenticodeSignature $env:PCLOCK_SIGN_EXE; if (-not $sig.SignerCertificate) { Write-Error 'EXE is not signed'; exit 1 }; $fp = $sig.SignerCertificate.Thumbprint.Replace(' ','').ToUpperInvariant(); $want = $env:PCLOCK_EXPECTED_CERT_SHA256.Replace(' ','').ToUpperInvariant(); if ($fp -ne $want) { Write-Error ('Certificate thumbprint mismatch: ' + $fp); exit 1 }; Write-Host ('Release cert OK: ' + $fp)"
+if errorlevel 1 ( echo CERT FINGERPRINT CHECK FAILED & exit /b 1 )
+goto :certdone
+:nocertpin
+echo Hint: set PCLOCK_EXPECTED_CERT_SHA256 to enforce the release signing certificate.
+:certdone
+
 echo Done.
 endlocal

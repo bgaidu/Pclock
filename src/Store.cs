@@ -11,7 +11,7 @@ namespace PCLock
     /// 设置持久化（HKLM\SOFTWARE\PCLock，要求管理员权限）。
     /// LockFlag 持久化是实现"重启仍锁"的关键。
     /// </summary>
-    public static class Store
+    public static partial class Store
     {
         static RegistryKey root;
 
@@ -60,6 +60,8 @@ namespace PCLock
                     SetInt("RemainingSeconds", PCLockConstants.DefaultDurationMinutes * 60);
                     SetLong("LastSeenUtc", 0);
                     SetInt("FirstRunDone", 1);
+                    SetInt("PinSetupDone", 0);   // 新安装：首次运行强制家长设置两个密码（P0-1）
+                    SetInt("AntiTamper", 0);     // 可选加固默认关闭（P1-12）
                 }
             }
             catch (Exception ex)

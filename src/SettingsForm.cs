@@ -80,6 +80,16 @@ namespace PCLock
         MenuStrip BuildMenuStrip()
         {
             MenuStrip menu = new MenuStrip();
+            // P0/P1 新增规则集中在独立窗口，避免把本页巨型构造函数再撑大
+            ToolStripMenuItem miAdvanced = new ToolStripMenuItem("高级规则");
+            miAdvanced.Click += delegate
+            {
+                using (AdvancedSettingsForm af = new AdvancedSettingsForm()) af.ShowDialog(this);
+            };
+            menu.Items.Add(miAdvanced);
+            ToolStripMenuItem miUsage = new ToolStripMenuItem("使用记录");
+            miUsage.Click += delegate { using (UsageForm uf = new UsageForm()) uf.ShowDialog(this); };
+            menu.Items.Add(miUsage);
             ToolStripMenuItem miAbout = new ToolStripMenuItem("关于");
             miAbout.Click += delegate { using (AboutForm af = new AboutForm()) af.ShowDialog(this); };
             menu.Items.Add(miAbout);
