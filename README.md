@@ -31,7 +31,7 @@
 把整个 `pclock` 文件夹拷到目标机器，双击 `build.bat`。
 `build.bat` 优先调用 **.NET Framework 4.x** 自带的编译器，产物 `PCLock.exe` 面向 .NET 4.0 运行时，在装有 .NET 4.0+ 的 Win7 上即可运行（如系统未带 4.x，请先安装 .NET Framework 4.x）。
 产物目录同时包含 `PCLock.exe.config`（声明支持的运行时），须与 `PCLock.exe` 放在同一目录。
-构建前会自动生成 `src\_Version.cs`（版本号/commit，脚本为 `gen_version.bat`，VS 构建经 `PCLock.csproj` 调用同一脚本）。
+构建前会自动生成 `src\_Version.cs`：**版本号每次构建自动取自 git tag**（去掉 `v` 前缀；GitHub tag 构建用 `GITHUB_REF_NAME`，本地取 HEAD 上的 tag，否则取版本最高的 tag；无 tag / 无 git 回退 `1.0.0`），Commit 取 git 短哈希。脚本为 `gen_version.bat`，`build.bat` 与 VS（`PCLock.csproj` 的 `BeforeBuild`）共用，无需手工改版本号。
 单元测试：双击 `tests\run.bat`（同样基于系统自带 `csc`，零依赖），覆盖时段解析、题库组合与题库边界、PIN 哈希、数学答案一致性、断电折算（53 项）。
 
 ## 安装（只需一次）
@@ -619,6 +619,10 @@ build.bat Release     :: 产物 bin\Release\PCLock.exe（请核对时间戳）
 
 > **CI 触发约定（2026-11-11 调整）**：GitHub 上只有打 `v*` tag 才编译并发布
 > （`release.yml`，含产物时间戳校验）；PR / 手动运行只跑单测（`tests.yml`），普通 push 不再触发任何 GitHub 编译。
+>
+> **版本号自动同步**：`gen_version.bat` 每次构建自动取 tag 生成 `AppVersion.Version`
+> （`v1.6.0` → `1.6.0`），CI tag 构建用 `GITHUB_REF_NAME` 优先，本地用 `git tag`，
+> 无 tag 回退 `1.0.0`。`build.bat` 与 VS 共用同一脚本，打完 tag 后构建即自动对齐，无需改代码。
 
 > 测试规模由 53 项增至 **85 项**；上文历史更新日志中的「53 项」为当时口径。
 > 新增 GUI 行为（首次密码、高级规则、练习、休息、使用记录）需按
