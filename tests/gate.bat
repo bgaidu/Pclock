@@ -48,5 +48,10 @@ if not exist "src\Store.Extras.cs" ( echo [FAIL] src\Store.Extras.cs missing & e
 if not exist "src\Housekeeping.cs" ( echo [FAIL] src\Housekeeping.cs missing & exit /b 1 )
 if not exist "src\BankSet.cs"      ( echo [FAIL] src\BankSet.cs missing & exit /b 1 )
 if not exist "tests\Batch4Tests.cs" ( echo [FAIL] tests\Batch4Tests.cs missing & exit /b 1 )
+rem Embedded file version must be present, otherwise Explorer cannot show it
+rem (gen_version.bat emits the assembly attributes; an empty value means the
+rem attribute block was dropped or the script failed silently).
+powershell -NoProfile -Command "$v=(Get-Item 'bin\Release\PCLock.exe').VersionInfo.FileVersion; if (-not $v) { exit 1 }; Write-Host ('[OK] FileVersion=' + $v)"
+if errorlevel 1 ( echo [FAIL] exe has no FileVersion & exit /b 1 )
 echo [OK] gate passed: tests + Release + Debug + manifest
 exit /b 0
