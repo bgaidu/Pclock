@@ -18,6 +18,9 @@ namespace PCLock
         TextBox txtQCount, txtStreak, txtExtraThreshold, txtExtraPer;
         TextBox[] txtStars = new TextBox[5];
         CheckBox chkAntiTamper, chkFeedback, chkStar, chkPractice;
+        CheckBox chkMathChoice, chkChineseWord, chkTrueFalse, chkChildGrade, chkReview;
+        ComboBox cbDifficulty, cbTerm, cbLang;
+        TextBox txtBank, txtHold, txtEncourage, txtHolidays;
         Label hint;
 
         public AdvancedSettingsForm()
@@ -58,6 +61,10 @@ namespace PCLock
             TabPage p3 = new TabPage("题库与记录");
             BuildBankPage(p3);
             tabs.TabPages.Add(p3);
+
+            TabPage p4 = new TabPage("学习与体验");
+            BuildLearnPage(p4);
+            tabs.TabPages.Add(p4);
             Controls.Add(tabs);
 
             hint = L("", 15, 452);
@@ -108,8 +115,19 @@ namespace PCLock
             chkAntiTamper = new CheckBox();
             chkAntiTamper.Text = "检测系统时间大幅回拨并保护性锁定（可选加固，默认关）";
             chkAntiTamper.AutoSize = true;
-            chkAntiTamper.Location = new Point(15, 335);
+            chkAntiTamper.Location = new Point(15, 330);
             p.Controls.Add(chkAntiTamper);
+
+            Button grid = new Button();
+            grid.Text = "打开时段格子编辑器";
+            grid.Location = new Point(250, 326);
+            grid.Size = new Size(180, 28);
+            grid.Click += delegate
+            {
+                using (ScheduleGridForm g = new ScheduleGridForm())
+                    if (g.ShowDialog(this) == DialogResult.OK) txtRules.Text = g.RuleText;
+            };
+            p.Controls.Add(grid);
         }
 
         void BuildQuizPage(TabPage p)
@@ -194,10 +212,127 @@ namespace PCLock
             };
             p.Controls.Add(bUsage);
 
+            Button bExportCfg = new Button();
+            bExportCfg.Text = "导出配置（换机）";
+            bExportCfg.Location = new Point(15, 195);
+            bExportCfg.Size = new Size(160, 32);
+            bExportCfg.Click += delegate { ExportConfigToFile(); };
+            p.Controls.Add(bExportCfg);
+
+            Button bImportCfg = new Button();
+            bImportCfg.Text = "导入配置";
+            bImportCfg.Location = new Point(190, 195);
+            bImportCfg.Size = new Size(160, 32);
+            bImportCfg.Click += delegate { ImportConfigFromFile(); };
+            p.Controls.Add(bImportCfg);
+
             Label note = L("质量门禁：题量、选项 2-4 个且互不重复、正确答案下标、\n" +
-                "无占位符、题干去重、年级不超纲；导入前还会校验年级范围与重复词条。", 15, 200);
+                "无占位符、题干去重、年级不超纲；导入前还会校验年级范围与重复词条。", 15, 240);
             note.ForeColor = Color.DimGray;
             p.Controls.Add(note);
+        }
+
+        void BuildLearnPage(TabPage p)
+        {
+            p.Controls.Add(L("难度倾向（80/20 加权）", 15, 20));
+            cbDifficulty = new ComboBox();
+            cbDifficulty.Location = new Point(150, 16);
+            cbDifficulty.Size = new Size(120, 24);
+            cbDifficulty.DropDownStyle = ComboBoxStyle.DropDownList;
+            cbDifficulty.Items.AddRange(new object[] { "不限", "偏易", "中等", "偏难" });
+            p.Controls.Add(cbDifficulty);
+
+            p.Controls.Add(L("学期", 290, 20));
+            cbTerm = new ComboBox();
+            cbTerm.Location = new Point(340, 16);
+            cbTerm.Size = new Size(100, 24);
+            cbTerm.DropDownStyle = ComboBoxStyle.DropDownList;
+            cbTerm.Items.AddRange(new object[] { "全学年", "上册", "下册" });
+            p.Controls.Add(cbTerm);
+
+            p.Controls.Add(L("题库名过滤（空=全部）", 15, 58));
+            txtBank = B(160, 55, 150); p.Controls.Add(txtBank);
+
+            chkMathChoice = new CheckBox();
+            chkMathChoice.Text = "数学四选一";
+            chkMathChoice.AutoSize = true; chkMathChoice.Location = new Point(15, 90);
+            p.Controls.Add(chkMathChoice);
+            chkChineseWord = new CheckBox();
+            chkChineseWord.Text = "看拼音选词语";
+            chkChineseWord.AutoSize = true; chkChineseWord.Location = new Point(160, 90);
+            p.Controls.Add(chkChineseWord);
+            chkTrueFalse = new CheckBox();
+            chkTrueFalse.Text = "判断题";
+            chkTrueFalse.AutoSize = true; chkTrueFalse.Location = new Point(310, 90);
+            p.Controls.Add(chkTrueFalse);
+
+            chkReview = new CheckBox();
+            chkReview.Text = "间隔重复复习（错题到期优先，本地 review.json）";
+            chkReview.AutoSize = true; chkReview.Location = new Point(15, 125);
+            p.Controls.Add(chkReview);
+            chkChildGrade = new CheckBox();
+            chkChildGrade.Text = "允许孩子自选年级（仅影响下一批题）";
+            chkChildGrade.AutoSize = true; chkChildGrade.Location = new Point(15, 155);
+            p.Controls.Add(chkChildGrade);
+
+            p.Controls.Add(L("解析停留秒数（0=不强制）", 15, 190));
+            txtHold = B(170, 187, 60); p.Controls.Add(txtHold);
+            p.Controls.Add(L("鼓励语", 250, 190));
+            txtEncourage = B(310, 187, 180); p.Controls.Add(txtEncourage);
+
+            p.Controls.Add(L("界面语言（新窗口生效）", 15, 225));
+            cbLang = new ComboBox();
+            cbLang.Location = new Point(170, 222);
+            cbLang.Size = new Size(120, 24);
+            cbLang.DropDownStyle = ComboBoxStyle.DropDownList;
+            cbLang.Items.AddRange(new object[] { "中文", "English" });
+            p.Controls.Add(cbLang);
+
+            p.Controls.Add(L("节假日日期（yyyy-MM-dd，逗号分隔，按周日规则）", 15, 260));
+            txtHolidays = B(15, 282, 490); p.Controls.Add(txtHolidays);
+
+            Label note = L("学期 / 题库名来自外部词库可选列；内置题库无学期标签时按全学年处理。", 15, 315);
+            note.ForeColor = Color.DimGray;
+            p.Controls.Add(note);
+        }
+
+        void ExportConfigToFile()
+        {
+            string json = ConfigIo.ExportConfig();
+            if (string.IsNullOrEmpty(json)) { MessageBox.Show(this, "导出失败（需管理员权限）。", "电脑锁"); return; }
+            using (SaveFileDialog d = new SaveFileDialog())
+            {
+                d.Filter = "JSON 文件|*.json";
+                d.FileName = "pclock-config-" + DateTime.Now.ToString("yyyyMMdd") + ".json";
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                try
+                {
+                    File.WriteAllText(d.FileName, json, new UTF8Encoding(false));
+                    AuditLog.Write("配置导出：" + d.FileName);
+                    MessageBox.Show(this, "已导出。文件内含家长 PIN / 卸载密码哈希，请妥善保管。", "电脑锁");
+                }
+                catch (Exception ex) { MessageBox.Show(this, "导出失败：" + ex.Message, "电脑锁"); }
+            }
+        }
+
+        void ImportConfigFromFile()
+        {
+            if (MessageBox.Show(this, "导入会覆盖同名配置项（含密码哈希），确定继续？", "电脑锁",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+            using (OpenFileDialog d = new OpenFileDialog())
+            {
+                d.Filter = "JSON 文件|*.json";
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                try
+                {
+                    string err = ConfigIo.ImportConfig(File.ReadAllText(d.FileName, Encoding.UTF8));
+                    if (err != null) { MessageBox.Show(this, "导入失败：" + err, "电脑锁"); return; }
+                    AuditLog.Write("配置导入：" + d.FileName);
+                    LoadValues(cbUser.Text);
+                    MessageBox.Show(this, "已导入配置。运行态未导入，下次锁屏生效。", "电脑锁");
+                }
+                catch (Exception ex) { MessageBox.Show(this, "导入失败：" + ex.Message, "电脑锁"); }
+            }
         }
 
         void LoadValues(string user)
@@ -220,6 +355,18 @@ namespace PCLock
             int[] rewards = Store.GetStarRewards(user);
             for (int i = 0; i < 5; i++) txtStars[i].Text = rewards[i].ToString();
             chkPractice.Checked = Store.IsPracticeEnabled(user);
+            cbDifficulty.SelectedIndex = Store.GetPreferDifficulty(user);
+            cbTerm.SelectedIndex = Store.GetTerm(user);
+            cbLang.SelectedIndex = Store.GetLanguage() == "en" ? 1 : 0;
+            txtBank.Text = Store.GetBankFilter(user);
+            txtHold.Text = Store.GetFeedbackHoldSec(user).ToString();
+            txtEncourage.Text = Store.GetEncourageText(user);
+            txtHolidays.Text = Store.GetHolidayDates();
+            chkMathChoice.Checked = Store.IsMathChoiceOn(user);
+            chkChineseWord.Checked = Store.IsChineseWordOn(user);
+            chkTrueFalse.Checked = Store.IsTrueFalseOn(user);
+            chkChildGrade.Checked = Store.IsChildGradeOn(user);
+            chkReview.Checked = Store.IsReviewOn(user);
             hint.Text = "所有新增规则默认关闭；修改后按用户生效。";
         }
 
@@ -246,6 +393,19 @@ namespace PCLock
                 for (int i = 0; i < 5; i++) rewards[i] = Int(txtStars[i].Text, i + 1);
                 Store.SetStarRewards(u, rewards);
                 Store.SetPracticeEnabled(u, chkPractice.Checked);
+                Store.SetPreferDifficulty(u, cbDifficulty.SelectedIndex);
+                Store.SetTerm(u, cbTerm.SelectedIndex);
+                Store.SetLanguage(cbLang.SelectedIndex == 1 ? "en" : "zh");
+                Strings.Lang = Store.GetLanguage();
+                Store.SetBankFilter(u, txtBank.Text);
+                Store.SetFeedbackHoldSec(u, Int(txtHold.Text, 0));
+                Store.SetEncourageText(u, txtEncourage.Text);
+                Store.SetHolidayDates(txtHolidays.Text);
+                Store.SetMathChoiceOn(u, chkMathChoice.Checked);
+                Store.SetChineseWordOn(u, chkChineseWord.Checked);
+                Store.SetTrueFalseOn(u, chkTrueFalse.Checked);
+                Store.SetChildGradeOn(u, chkChildGrade.Checked);
+                Store.SetReviewOn(u, chkReview.Checked);
 
                 AuditLog.Write("高级规则设置修改：用户 " + u);
                 hint.Text = "已保存。部分设置（题量/规则/题库）在下次锁屏或下次登录生效。";

@@ -10,9 +10,9 @@ if not exist "%CSC%" set CSC=%SystemRoot%\Microsoft.NET\Framework\v4.0.30319\csc
 
 "%CSC%" /nologo /target:exe /out:tests\_tests.exe /codepage:65001 /r:System.dll ^
   src\Constants.cs src\ChineseData.cs src\EnglishData.cs src\Questions.cs src\Store.cs ^
-  src\Policy.cs src\BankIo.cs src\QuestionPolicy.cs ^
+  src\Policy.cs src\BankIo.cs src\QuestionPolicy.cs src\Learning.cs src\ConfigIo.cs src\Strings.cs ^
   tests\TUnit.cs tests\UnitTests.cs tests\HashTests.cs tests\MathAnswerTests.cs tests\OfflineDeductTests.cs ^
-  tests\PolicyTests.cs tests\BankIoTests.cs tests\QuestionPolicyTests.cs
+  tests\PolicyTests.cs tests\BankIoTests.cs tests\QuestionPolicyTests.cs tests\Batch3Tests.cs
 
 rem NOTE: the file list above is intentionally explicit (core files only).
 rem Do NOT glob src\*.cs here: it would pull in Program.cs/App.cs/LockForm.cs

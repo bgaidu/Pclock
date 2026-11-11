@@ -54,9 +54,9 @@ namespace PCLock
             ok.Click += delegate
             {
                 // 全局冷却：上一次 5 连败后 30 秒内所有 PIN 对话框均拒绝输入
-                if (DateTime.Now < cooldownUntil)
+                if (DateTime.UtcNow < cooldownUntil)
                 {
-                    int left = (int)Math.Ceiling((cooldownUntil - DateTime.Now).TotalSeconds);
+                    int left = (int)Math.Ceiling((cooldownUntil - DateTime.UtcNow).TotalSeconds);
                     err.Text = "尝试次数过多，请 " + left + " 秒后再试";
                     box.Text = "";
                     AuditLog.Write("密码验证被冷却阻止：" + title);
@@ -90,7 +90,7 @@ namespace PCLock
                             box.Focus();
                             if (fails >= Constants.PinMaxFails)
                             {
-                                cooldownUntil = DateTime.Now.AddSeconds(Constants.PinCooldownSec);
+                                cooldownUntil = DateTime.UtcNow.AddSeconds(Constants.PinCooldownSec);
                                 AuditLog.Write("密码连续失败：" + title + " 进入 " + Constants.PinCooldownSec + " 秒冷却");
                                 DialogResult = DialogResult.Cancel;
                                 Close();

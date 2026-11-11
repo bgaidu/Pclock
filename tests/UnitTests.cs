@@ -335,7 +335,8 @@ public class Program
         int fails = TUnit.Runner.Run(new Type[] {
             typeof(WindowTests), typeof(QuestionTests), typeof(QuestionBankEdgeTests),
             typeof(HashTests), typeof(MathAnswerTests), typeof(OfflineDeductTests),
-            typeof(PolicyTests), typeof(MutationTests), typeof(BankIoTests), typeof(QuestionPolicyTests) });
+            typeof(PolicyTests), typeof(MutationTests), typeof(BankIoTests), typeof(QuestionPolicyTests),
+            typeof(LearningTests), typeof(ConfigIoTests), typeof(NewQuestionTypeTests) });
         return fails == 0 ? 0 : 1;
     }
 }

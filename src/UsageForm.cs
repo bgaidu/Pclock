@@ -23,7 +23,7 @@ namespace PCLock
             StartPosition = FormStartPosition.CenterParent;
             ShowInTaskbar = false;
             TopMost = true;
-            ClientSize = new Size(560, 340);
+            ClientSize = new Size(560, 420);
             this.Icon = Program.LoadAppIcon();
 
             user = (App.Instance != null) ? App.Instance.CurrentUser : Store.GetCurrentUser();
@@ -47,22 +47,48 @@ namespace PCLock
             total.Text = "今日已用：" + (Store.GetUsedToday(user) / 60) + " 分 " +
                 (Store.GetUsedToday(user) % 60) + " 秒";
             total.AutoSize = true;
-            total.Location = new Point(16, 268);
+            total.Location = new Point(16, 262);
             Controls.Add(total);
 
             Button export = new Button();
             export.Text = "导出 CSV";
-            export.Location = new Point(310, 290);
+            export.Location = new Point(310, 376);
             export.Size = new Size(110, 32);
             export.Click += delegate { ExportCsv(); };
             Controls.Add(export);
 
             Button close = new Button();
             close.Text = "关闭";
-            close.Location = new Point(430, 290);
+            close.Location = new Point(430, 376);
             close.Size = new Size(110, 32);
             close.Click += delegate { Close(); };
             Controls.Add(close);
+
+            // 30 天汇总 / 弱项 / 崩溃日志本地聚合（不上传）
+            int[] month = Store.GetUsageLastDays(user, DateTime.Now, 30);
+            long monthTotal = 0;
+            foreach (int s in month) monthTotal += s;
+            string[] keys = Store.ListStatKeys(user);
+            string[] vals = new string[keys.Length];
+            for (int i = 0; i < keys.Length; i++) vals[i] = Store.GetQuestionStat(user, keys[i]);
+            string weak = QuestionStats.Weakest(keys, vals, 3);
+            string crashes = "";
+            try
+            {
+                string errPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "err.txt");
+                if (File.Exists(errPath))
+                    crashes = string.Join("；", ConfigIo.CrashSummary(File.ReadAllText(errPath)));
+            }
+            catch (Exception) { }
+            Label summary = new Label();
+            summary.AutoSize = false;
+            summary.Size = new Size(528, 78);
+            summary.Location = new Point(16, 288);
+            summary.ForeColor = Color.DimGray;
+            summary.Text = "近 30 天合计：" + (monthTotal / 3600) + " 小时 " + ((monthTotal % 3600) / 60) + " 分" +
+                Environment.NewLine + "最弱题目（作答≥3 次）：" + (weak == "" ? "暂无数据" : weak) +
+                Environment.NewLine + "本地异常摘要：" + (crashes == "" ? "无 err.txt" : crashes);
+            Controls.Add(summary);
 
             Program.FlattenButtons(this);
         }

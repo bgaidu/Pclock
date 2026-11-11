@@ -90,6 +90,38 @@ namespace PCLock
             ToolStripMenuItem miUsage = new ToolStripMenuItem("使用记录");
             miUsage.Click += delegate { using (UsageForm uf = new UsageForm()) uf.ShowDialog(this); };
             menu.Items.Add(miUsage);
+            ToolStripMenuItem miLang = new ToolStripMenuItem("语言");
+            miLang.DropDownItems.Add("中文", null, delegate
+            {
+                Store.SetLanguage("zh"); Strings.Lang = "zh";
+                MessageBox.Show(this, "已切换为中文，重新打开的窗口生效。", "电脑锁");
+            });
+            miLang.DropDownItems.Add("English", null, delegate
+            {
+                Store.SetLanguage("en"); Strings.Lang = "en";
+                MessageBox.Show(this, "Switched to English. Reopened windows will use it.", "PCLock");
+            });
+            menu.Items.Add(miLang);
+
+            ToolStripMenuItem miDelete = new ToolStripMenuItem("删除当前用户配置");
+            miDelete.Click += delegate
+            {
+                string u = Store.GetCurrentUser();
+                if (MessageBox.Show(this, "将删除「" + u + "」的全部时长/时段/答题/统计配置（不影响其他用户），确定？",
+                    "电脑锁", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+                bool ok = false;
+                using (PinDialog pd = new PinDialog("家长验证", "请输入家长 PIN：",
+                    delegate(string s) { return Store.VerifyPin(s); }))
+                {
+                    ok = (pd.ShowDialog(this) == DialogResult.OK);
+                }
+                if (!ok) return;
+                int n = Store.DeleteUserConfig(u);
+                AuditLog.Write("删除用户配置：" + u + "，共 " + n + " 项");
+                MessageBox.Show(this, "已删除 " + n + " 项配置。默认值将在下次启动/设置时生效。", "电脑锁");
+            };
+            menu.Items.Add(miDelete);
+
             ToolStripMenuItem miAbout = new ToolStripMenuItem("关于");
             miAbout.Click += delegate { using (AboutForm af = new AboutForm()) af.ShowDialog(this); };
             menu.Items.Add(miAbout);

@@ -193,6 +193,7 @@ namespace PCLock
 
                 // P0-1 首次运行强制设置两个密码（消除默认 1234）；旧安装不弹窗
                 Store.Init();
+                Strings.Lang = Store.GetLanguage();
                 if (Store.NeedsFirstPinSetup())
                 {
                     Log("First-run PIN setup required");

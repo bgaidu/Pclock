@@ -22,3 +22,10 @@ _Version.cs
 
 # WorkBuddy 会话工作目录（项目记忆、临时备份等，不入库）
 .workbuddy/
+
+# 运行期生成的数据/记录（不入库）
+logs/
+review.json
+docs/manual-regression-results.csv
+tests/_tests.exe
+installer/output/

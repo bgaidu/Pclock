@@ -177,6 +177,104 @@ namespace PCLock
             return r;
         }
 
+        // === 本批新增：学习策略 / 题型 / 体验 / 多语言 ===
+        public static int GetPreferDifficulty(string user) { return ClampMin(GetInt(UKey(user, "PreferDiff"), 0), 0, 3); }
+        public static void SetPreferDifficulty(string user, int v) { SetInt(UKey(user, "PreferDiff"), ClampMin(v, 0, 3)); }
+
+        public static int GetTerm(string user) { return ClampMin(GetInt(UKey(user, "Term"), 0), 0, 2); }
+        public static void SetTerm(string user, int v) { SetInt(UKey(user, "Term"), ClampMin(v, 0, 2)); }
+
+        public static string GetBankFilter(string user) { return GetStr(UKey(user, "Bank"), ""); }
+        public static void SetBankFilter(string user, string v) { SetStr(UKey(user, "Bank"), v == null ? "" : v.Trim()); }
+
+        public static bool IsMathChoiceOn(string user) { return GetInt(UKey(user, "MathChoice"), 0) == 1; }
+        public static void SetMathChoiceOn(string user, bool on) { SetInt(UKey(user, "MathChoice"), on ? 1 : 0); }
+        public static bool IsChineseWordOn(string user) { return GetInt(UKey(user, "ChineseWord"), 0) == 1; }
+        public static void SetChineseWordOn(string user, bool on) { SetInt(UKey(user, "ChineseWord"), on ? 1 : 0); }
+        public static bool IsTrueFalseOn(string user) { return GetInt(UKey(user, "TrueFalse"), 0) == 1; }
+        public static void SetTrueFalseOn(string user, bool on) { SetInt(UKey(user, "TrueFalse"), on ? 1 : 0); }
+
+        public static int GetFeedbackHoldSec(string user) { return ClampMin(GetInt(UKey(user, "FeedbackHold"), 0), 0, 120); }
+        public static void SetFeedbackHoldSec(string user, int v) { SetInt(UKey(user, "FeedbackHold"), ClampMin(v, 0, 120)); }
+
+        public static string GetEncourageText(string user) { return GetStr(UKey(user, "Encourage"), "答对了！"); }
+        public static void SetEncourageText(string user, string v)
+        {
+            SetStr(UKey(user, "Encourage"), string.IsNullOrEmpty(v) ? "答对了！" : v);
+        }
+
+        public static bool IsChildGradeOn(string user) { return GetInt(UKey(user, "ChildGrade"), 0) == 1; }
+        public static void SetChildGradeOn(string user, bool on) { SetInt(UKey(user, "ChildGrade"), on ? 1 : 0); }
+
+        public static bool IsReviewOn(string user) { return GetInt(UKey(user, "ReviewOn"), 0) == 1; }
+        public static void SetReviewOn(string user, bool on) { SetInt(UKey(user, "ReviewOn"), on ? 1 : 0); }
+
+        /// <summary>间隔重复状态按题 key 存注册表（跨重启保留）</summary>
+        public static ReviewState GetReviewState(string user, string key)
+        {
+            return SpacedRepetition.Parse(GetStr(UKey(user, "Rev:" + key), ""));
+        }
+        public static void SetReviewState(string user, string key, ReviewState s)
+        {
+            SetStr(UKey(user, "Rev:" + key), SpacedRepetition.Serialize(s));
+        }
+
+        /// <summary>按题统计（shown|answered|correct），跨重启保留</summary>
+        public static string GetQuestionStat(string user, string key)
+        {
+            return GetStr(UKey(user, "Stat:" + key), "");
+        }
+        public static void RecordAnswer(string user, Question q, bool correct)
+        {
+            if (q == null) return;
+            string key = QuestionStats.KeyOf(q);
+            SetStr(UKey(user, "Stat:" + key),
+                QuestionStats.Update(GetQuestionStat(user, key), correct));
+            ReviewState s = GetReviewState(user, key);
+            s = SpacedRepetition.Review(s, correct, DateTime.UtcNow.Ticks);
+            SetReviewState(user, key, s);
+        }
+
+        /// <summary>列出有统计记录的题 key（供弱项分析 / 到期复习使用）</summary>
+        public static string[] ListStatKeys(string user)
+        {
+            List<string> r = new List<string>();
+            string prefix = UKey(user, "Stat:");
+            try
+            {
+                if (root == null) return r.ToArray();
+                foreach (string name in root.GetValueNames())
+                    if (name.StartsWith(prefix, StringComparison.Ordinal)) r.Add(name.Substring(prefix.Length));
+            }
+            catch (Exception) { }
+            return r.ToArray();
+        }
+
+        /// <summary>节假日日期列表（yyyy-MM-dd，逗号分隔）：命中时按周日规则处理</summary>
+        public static string GetHolidayDates() { return GetStr("HolidayDates", ""); }
+        public static void SetHolidayDates(string v) { SetStr("HolidayDates", v == null ? "" : v.Trim()); }
+
+        public static string GetLanguage() { string s = GetStr("Lang", "zh"); return s == "en" ? "en" : "zh"; }
+        public static void SetLanguage(string v) { SetStr("Lang", v == "en" ? "en" : "zh"); }
+
+        /// <summary>删除该用户的全部配置（二次确认 + 家长 PIN 后调用）</summary>
+        public static int DeleteUserConfig(string user)
+        {
+            int n = 0;
+            string prefix = UKey(user, "");
+            try
+            {
+                if (root == null) return 0;
+                foreach (string name in root.GetValueNames())
+                {
+                    if (!name.StartsWith(prefix, StringComparison.Ordinal)) continue;
+                    try { root.DeleteValue(name, false); n++; } catch (Exception) { }
+                }
+            }
+            catch (Exception ex) { Log("DeleteUserConfig 失败: " + ex.Message); }
+            return n;
+        }
+
         static int ClampMin(int v, int lo, int hi)
         {
             if (v < lo) return lo;
