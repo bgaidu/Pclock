@@ -135,10 +135,16 @@ namespace PCLock
             bool math = current.Type == QType.MathCalc;
             answerBox.Visible = math;
             submitBtn.Visible = math;
-            for (int i = 0; i < 4; i++)
+            // 同 LockForm：不能用 Visible 判断（构造期窗体未 Show 时 getter 恒为 false），
+            // 否则首题按钮文字为空
+            string[] opts = current.Options ?? new string[0];
+            int optCount = UiSafe.OptionCount(opts, optBtns.Length);
+            for (int i = 0; i < optBtns.Length; i++)
             {
-                optBtns[i].Visible = !math && i < (current.Options == null ? 0 : current.Options.Length);
-                if (optBtns[i].Visible) optBtns[i].Text = current.Options[i];
+                bool show = !math && UiSafe.ShowOption(i, optCount);
+                optBtns[i].Visible = show;
+                optBtns[i].Tag = i;
+                optBtns[i].Text = show ? opts[i] : "";
             }
             UpdateStats();
         }
@@ -157,8 +163,10 @@ namespace PCLock
 
         void OnOption(object sender, EventArgs e)
         {
-            if (current == null || current.Type == QType.MathCalc) return;
-            int i = (int)((Button)sender).Tag;
+            if (current == null || current.Type == QType.MathCalc || current.Options == null) return;
+            Button b = sender as Button;
+            int i = UiSafe.OptionIndex(b == null ? null : b.Tag, current.Options.Length);
+            if (i == UiSafe.InvalidIndex) return;
             Judge(i == current.CorrectIndex);
         }
 

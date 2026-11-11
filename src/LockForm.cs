@@ -50,6 +50,7 @@ namespace PCLock
         LowLevelHook hook;
         Timer uiTimer;
         bool dueToWindow;   // true=因"不在每日可用时段"而锁（硬锁）
+        bool restActive;    // 护眼休息中（用字段而非 restLabel.Visible：构造期 getter 不可靠）
         bool autoUnlocked;  // 自动解锁只触发一次
 
         Label feedbackLabel;    // 答错后的正确答案 / 解析
@@ -344,7 +345,8 @@ namespace PCLock
                 questionLabel.Text = string.IsNullOrWhiteSpace(rules)
                     ? "请使用家长 PIN 解锁" : ("当前规则：\n" + rules);
                 statusLabel.Text = Strings.Get("休息结束后自动解锁，或由家长输入 PIN / 临时放行。");
-                restLabel.Visible = hardReason.IndexOf("休息") >= 0;
+                restActive = hardReason.IndexOf("休息") >= 0;
+                restLabel.Visible = restActive;
             }
             else
             {
@@ -499,11 +501,19 @@ namespace PCLock
                 submitBtn.Visible = false;
                 meaningLabel.Visible = (q.Type == QType.ChinesePinyin);
                 meaningLabel.Text = q.Explanation;
-                // 新题型（判断题等）可能只有 2 个选项，不能越界访问第 3/4 个
-                for (int i = 0; i < 4; i++)
+                // 新题型（判断题等）可能只有 2 个选项，不能越界访问第 3/4 个。
+                // 【严禁】用 optBtns[i].Visible 判断：首题在构造函数里渲染，此时窗体尚未 Show，
+                // WinForms 中父窗体不可见时子控件的 Visible getter 恒返回 false，会跳过
+                // Text/Tag 赋值 —— 按钮显示后文字为空、Tag 为 null，点击 (int)null 即
+                // NullReferenceException（v1.6.4 线上事故根因）。
+                string[] opts = q.Options ?? new string[0];
+                int optCount = UiSafe.OptionCount(opts, optBtns.Length);
+                for (int i = 0; i < optBtns.Length; i++)
                 {
-                    optBtns[i].Visible = i < q.Options.Length;
-                    if (optBtns[i].Visible) { optBtns[i].Text = q.Options[i]; optBtns[i].Tag = i; }
+                    bool show = UiSafe.ShowOption(i, optCount);
+                    optBtns[i].Visible = show;
+                    optBtns[i].Tag = show ? (object)i : null;
+                    optBtns[i].Text = show ? opts[i] : "";
                 }
             }
             LayoutControls();
@@ -546,9 +556,13 @@ namespace PCLock
         void OnOptionClick(object sender, EventArgs e)
         {
             if (wrongLeft > 0) return;
-            if (questions[qIndex].Type == QType.MathCalc) return;
-            int idx = (int)((Button)sender).Tag;
-            if (idx == questions[qIndex].CorrectIndex) OnCorrect();
+            if (questions == null || qIndex < 0 || qIndex >= questions.Count) return;
+            Question q = questions[qIndex];
+            if (q == null || q.Type == QType.MathCalc || q.Options == null) return;
+            Button b = sender as Button;
+            int idx = UiSafe.OptionIndex(b == null ? null : b.Tag, q.Options.Length);
+            if (idx == UiSafe.InvalidIndex) return;   // Tag 未初始化/非索引：直接忽略，绝不拆箱
+            if (idx == q.CorrectIndex) OnCorrect();
             else OnWrong();
         }
 
@@ -715,7 +729,7 @@ namespace PCLock
                             answerBox.Enabled = true;
                             submitBtn.Enabled = true;
                             foreach (Button b in optBtns) b.Enabled = true;
-                            if (continueBtn.Visible) continueBtn.Enabled = true;
+                            continueBtn.Enabled = true;   // 无条件恢复（不读 Visible：构造期 getter 不可靠）
                             UpdateStatus();
                         }
                         else
@@ -745,7 +759,7 @@ namespace PCLock
                 statusLabel.Text = WindowStatusText();
 
             // 护眼休息倒计时（UTC 截止，重启不失效）
-            if (restLabel.Visible)
+            if (restActive)
             {
                 int left = RestCooldown.RemainingSeconds(Store.GetRestUntilUtc(), DateTime.UtcNow.Ticks);
                 restLabel.Text = left > 0

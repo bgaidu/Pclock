@@ -32,7 +32,7 @@
 `build.bat` 优先调用 **.NET Framework 4.x** 自带的编译器，产物 `PCLock.exe` 面向 .NET 4.0 运行时，在装有 .NET 4.0+ 的 Win7 上即可运行（如系统未带 4.x，请先安装 .NET Framework 4.x）。
 产物目录同时包含 `PCLock.exe.config`（声明支持的运行时），须与 `PCLock.exe` 放在同一目录。
 构建前会自动生成 `src\_Version.cs`：**版本号每次构建自动取自 git tag**（去掉 `v` 前缀；GitHub tag 构建用 `GITHUB_REF_NAME`，本地取 HEAD 上的 tag，否则取版本最高的 tag；无 tag / 无 git 回退 `1.0.0`），Commit 取 git 短哈希。脚本为 `gen_version.bat`，`build.bat` 与 VS（`PCLock.csproj` 的 `BeforeBuild`）共用，无需手工改版本号。
-单元测试：双击 `tests\run.bat`（同样基于系统自带 `csc`，零依赖），覆盖时段解析、题库组合与题库边界、PIN 哈希、数学答案一致性、断电折算、日志保留与统计键清理、错题库混入去重、多题库文件解析、多语言词典（121 项）。
+单元测试：双击 `tests\run.bat`（同样基于系统自带 `csc`，零依赖），覆盖时段解析、题库组合与题库边界、PIN 哈希、数学答案一致性、断电折算、日志保留与统计键清理、错题库混入去重、多题库文件解析、多语言词典、选项按钮 Tag 解析（128 项）。
 
 ## 安装（只需一次）
 
@@ -626,7 +626,7 @@ LaTeX/手写/语音输入、TV 遥控器虚拟键盘、大人/儿童开机双选
 
 ```bat
 tests\gate.bat        :: 一键门禁：单测 + Release + Debug + 清单检查
-tests\run.bat         :: 单测（121 项，含 5 项负向变异回归）
+tests\run.bat         :: 单测（128 项，含 5 项负向变异回归）
 build.bat Release     :: 产物 bin\Release\PCLock.exe（请核对时间戳）
 ```
 
@@ -637,7 +637,7 @@ build.bat Release     :: 产物 bin\Release\PCLock.exe（请核对时间戳）
 > （`v1.6.0` → `1.6.0`），CI tag 构建用 `GITHUB_REF_NAME` 优先，本地用 `git tag`，
 > 无 tag 回退 `1.0.0`。`build.bat` 与 VS 共用同一脚本，打完 tag 后构建即自动对齐，无需改代码。
 
-> 测试规模由 53 项增至 **121 项**；上文历史更新日志中的「53 项」「85 项」「99 项」为当时口径。
+> 测试规模由 53 项增至 **128 项**；上文历史更新日志中的「53 项」「85 项」「99 项」为当时口径。
 > 新增 GUI 行为（首次密码、高级规则、练习、休息、使用记录）需按
 > `docs/回归验证清单.md` B17–B34 在管理员真机逐项验证，代理环境无法完成。
 
@@ -682,6 +682,17 @@ build.bat Release     :: 产物 bin\Release\PCLock.exe（请核对时间戳）
 | 覆盖范围 | 锁屏（标题/状态行/答题反馈/加时休息提示）、托盘菜单与气泡、首次运行、家长设置（含全部确认/提示弹窗）、高级规则（含题库质量检查、导入导出）、使用记录、练习模式、时段格子编辑器、关于 |
 | 词条 | 中文原文即 key，未收录原样返回；共 200+ 条，含 `{0}` 占位模板；`Strings.Count` / `Strings.AllKeys` 供自检 |
 | 验证 | 单测 116 → **121 项**（新增 5 项：模板+参数翻译、未收录回退、占位符越界不抛异常、关键窗口词条覆盖、key 唯一性）；`tests\gate.bat` 全绿 |
+
+### 2026-11-11 - 第六批（v1.6.5 热修：锁屏点选项崩溃）
+
+| 类别 | 内容 |
+|---|---|
+| 事故 | v1.6.4 锁屏点选项抛 `NullReferenceException`（`err.txt` 反复记 `UI THREAD EXCEPTION`），孩子点选项无任何反应，看门狗反复拉起主程序 |
+| 根因 | 首题在构造函数里渲染，此时窗体尚未 `Show`；WinForms 中子控件的 `Visible` getter 恒返回 `false`。第三批改造「支持 2-4 个选项」时写成 `if (optBtns[i].Visible) { 写 Text/Tag }`，判断永不成立，按钮文字为空、`Tag` 保持 `null`，点击时 `(int)null` 拆箱抛空引用 |
+| 修法 | 新增 `src/UiSafe.cs`（`OptionIndex` / `ShowOption` / `OptionCount` 纯函数）；渲染改用「实际选项数量」判断而不是控件可见性；点击处理统一走 `UiSafe.OptionIndex`，非法下标直接忽略，永不拆箱 |
+| 同类修复 | 练习模式首题按钮同样为空（`PracticeForm.Next` 同一写法）；`restLabel.Visible` / `continueBtn.Visible` 改为字段与无条件恢复 |
+| 防复发 | `tests\gate.bat` 新增 5/5 守卫：`src\**\*.cs` 出现 `if (xxx.Visible)`（跳过注释行）即失败；已用可编译样例注入验证会拦下，移除后恢复通过 |
+| 验证 | 单测 121 → **128 项**（新增 `tests/Batch5Tests.cs` 7 项：null/非 int/越界 Tag、2 选项与 4 选项可见性、null 选项数组钳制、隐藏按钮残留 Tag 组合场景） |
 
 ### 未做 / 需外部资源
 
