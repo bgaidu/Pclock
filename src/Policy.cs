@@ -304,14 +304,14 @@ namespace PCLock
             StringBuilder sb = new StringBuilder();
             if (q.Type == QType.MathCalc)
             {
-                sb.Append("正确答案：").Append(q.Answer.ToString(CultureInfo.InvariantCulture));
-                sb.Append("　（").Append(q.Prompt).Append("）");
+                sb.Append(Strings.Fmt("正确答案：{0}", q.Answer.ToString(CultureInfo.InvariantCulture)));
+                sb.Append(Strings.Fmt("　（{0}）", q.Prompt));
             }
             else if (q.Options != null && q.CorrectIndex >= 0 && q.CorrectIndex < q.Options.Length)
             {
-                sb.Append("正确答案：").Append(q.Options[q.CorrectIndex]);
+                sb.Append(Strings.Fmt("正确答案：{0}", q.Options[q.CorrectIndex]));
                 if (!string.IsNullOrEmpty(q.Explanation))
-                    sb.Append("　解析：").Append(q.Explanation);
+                    sb.Append(Strings.Fmt("　解析：{0}", q.Explanation));
             }
             return sb.ToString();
         }

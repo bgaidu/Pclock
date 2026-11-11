@@ -239,6 +239,61 @@ namespace PCLock
             }
         }
 
+        /// <summary>
+        /// 递归把窗体（含子容器、菜单、工具条）里的中文文字换成当前语言。
+        /// 只在窗口构造末尾调用一次：所有控件文字都已赋值，动态文案（计数/状态）留给运行时，
+        /// 未收录的句子原样保留中文，避免出现半截英文。
+        /// </summary>
+        internal static void Localize(Control root)
+        {
+            if (root == null) return;
+            try
+            {
+                ApplyText(root);
+                LocalizeChildren(root);
+            }
+            catch { }
+        }
+
+        static void LocalizeChildren(Control parent)
+        {
+            foreach (Control c in parent.Controls)
+            {
+                ApplyText(c);
+                if (c.HasChildren) LocalizeChildren(c);
+            }
+        }
+
+        static void ApplyText(Control c)
+        {
+            try
+            {
+                string t = c.Text;
+                if (!string.IsNullOrEmpty(t)) c.Text = Strings.Get(t);
+                ToolStrip ts = c as ToolStrip;
+                if (ts != null) LocalizeItems(ts.Items);
+                if (c.ContextMenuStrip != null) LocalizeItems(c.ContextMenuStrip.Items);
+            }
+            catch { }
+        }
+
+        /// <summary>翻译菜单项（含多级子菜单）</summary>
+        internal static void LocalizeItems(ToolStripItemCollection items)
+        {
+            if (items == null) return;
+            foreach (ToolStripItem it in items)
+            {
+                try
+                {
+                    string t = it.Text;
+                    if (!string.IsNullOrEmpty(t)) it.Text = Strings.Get(t);
+                    ToolStripMenuItem mi = it as ToolStripMenuItem;
+                    if (mi != null && mi.DropDownItems.Count > 0) LocalizeItems(mi.DropDownItems);
+                }
+                catch { }
+            }
+        }
+
         /// <summary>加载程序图标（AppIcon.ico），缺失或失败时返回 null（调用方回退到默认图标）。</summary>
         internal static Icon LoadAppIcon()
         {

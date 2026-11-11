@@ -43,6 +43,7 @@ namespace PCLock
             ok.Click += delegate { Save(); };
             Controls.Add(ok);
             AcceptButton = ok;
+            Program.Localize(this);
             Program.FlattenButtons(this);
         }
 
@@ -68,19 +69,19 @@ namespace PCLock
             string p = pin1.Text, p2 = pin2.Text, u = un1.Text, u2 = un2.Text;
             if (!Constants.IsValidPin(p) || !Constants.IsValidPin(u))
             {
-                MessageBox.Show(this, Constants.PinRuleText, "电脑锁"); return;
+                MessageBox.Show(this, Strings.Get(Constants.PinRuleText), Strings.Get("电脑锁")); return;
             }
             if (p != p2 || u != u2)
             {
-                MessageBox.Show(this, "两次输入不一致，请重新确认。", "电脑锁"); return;
+                MessageBox.Show(this, Strings.Get("两次输入不一致，请重新确认。"), Strings.Get("电脑锁")); return;
             }
             if (p == Constants.DefaultPin || u == Constants.DefaultUninstallPin)
             {
-                MessageBox.Show(this, "不能继续使用默认密码 1234，请设置自己的密码。", "电脑锁"); return;
+                MessageBox.Show(this, Strings.Get("不能继续使用默认密码 1234，请设置自己的密码。"), Strings.Get("电脑锁")); return;
             }
             if (p == u)
             {
-                MessageBox.Show(this, "家长 PIN 与卸载密码建议设置为不同值。", "电脑锁"); return;
+                MessageBox.Show(this, Strings.Get("家长 PIN 与卸载密码建议设置为不同值。"), Strings.Get("电脑锁")); return;
             }
             Store.SetPin(p);
             Store.SetUninstallPin(u);
@@ -97,7 +98,7 @@ namespace PCLock
             if (!done && e.CloseReason == CloseReason.UserClosing)
             {
                 e.Cancel = true;
-                MessageBox.Show(this, "首次使用必须设置密码后才能开始使用电脑锁。", "电脑锁");
+                MessageBox.Show(this, Strings.Get("首次使用必须设置密码后才能开始使用电脑锁。"), Strings.Get("电脑锁"));
                 return;
             }
             base.OnFormClosing(e);

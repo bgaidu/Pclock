@@ -119,7 +119,7 @@ namespace PCLock
         void OnTick(object sender, EventArgs e)
         {
             if (stopping || lockForm != null) return;   // 锁屏/退出中不计时（避免退出过程中再次触发 LockNow）
-            if (paused) { tray.Text = "电脑锁 - 已暂停"; return; }
+            if (paused) { tray.Text = Strings.Get("电脑锁 - 已暂停"); return; }
 
             DateTime now = DateTime.Now;
             long utcNow = DateTime.UtcNow.Ticks;
@@ -155,7 +155,7 @@ namespace PCLock
             if (wd.HasRules)
             {
                 if (wd.HardLock) { if (lockForm == null) LockNow(true); return; }
-                if (wd.FreeUse) { tray.Text = "电脑锁 - 自由使用（不计时）"; return; }
+                if (wd.FreeUse) { tray.Text = Strings.Get("电脑锁 - 自由使用（不计时）"); return; }
             }
             else if (!Store.IsWithinWindow(currentUser))
             {
@@ -211,7 +211,7 @@ namespace PCLock
                 }
                 FlushUsed();   // 与剩余时间同频落盘
             }
-            tray.Text = "电脑锁 - 剩余 " + FormatRemain(remaining);
+            tray.Text = Strings.Fmt("电脑锁 - 剩余 {0}", FormatRemain(remaining));
         }
 
         /// <summary>
@@ -247,8 +247,8 @@ namespace PCLock
         {
             int h = sec / 3600;
             int m = (sec % 3600) / 60;
-            if (h > 0) return h + " 小时 " + m + " 分";
-            return m + " 分 " + (sec % 60) + " 秒";
+            if (h > 0) return Strings.Fmt("{0} 小时 {1} 分", h, m);
+            return Strings.Fmt("{0} 分 {1} 秒", m, sec % 60);
         }
 
         void Warn(string text)

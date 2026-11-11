@@ -86,6 +86,7 @@ namespace PCLock
             Controls.Add(close);
 
             LoadValues(cbUser.Text);
+            Program.Localize(this);
             Program.FlattenButtons(this);
         }
 
@@ -313,7 +314,7 @@ namespace PCLock
         void ExportConfigToFile()
         {
             string json = ConfigIo.ExportConfig();
-            if (string.IsNullOrEmpty(json)) { MessageBox.Show(this, "导出失败（需管理员权限）。", "电脑锁"); return; }
+            if (string.IsNullOrEmpty(json)) { MessageBox.Show(this, Strings.Get("导出失败（需管理员权限）。"), Strings.Get("电脑锁")); return; }
             using (SaveFileDialog d = new SaveFileDialog())
             {
                 d.Filter = "JSON 文件|*.json";
@@ -323,15 +324,15 @@ namespace PCLock
                 {
                     File.WriteAllText(d.FileName, json, new UTF8Encoding(false));
                     AuditLog.Write("配置导出：" + d.FileName);
-                    MessageBox.Show(this, "已导出。文件内含家长 PIN / 卸载密码哈希，请妥善保管。", "电脑锁");
+                    MessageBox.Show(this, Strings.Get("已导出。文件内含家长 PIN / 卸载密码哈希，请妥善保管。"), Strings.Get("电脑锁"));
                 }
-                catch (Exception ex) { MessageBox.Show(this, "导出失败：" + ex.Message, "电脑锁"); }
+                catch (Exception ex) { MessageBox.Show(this, Strings.Get("导出失败：") + ex.Message, Strings.Get("电脑锁")); }
             }
         }
 
         void ImportConfigFromFile()
         {
-            if (MessageBox.Show(this, "导入会覆盖同名配置项（含密码哈希），确定继续？", "电脑锁",
+            if (MessageBox.Show(this, Strings.Get("导入会覆盖同名配置项（含密码哈希），确定继续？"), Strings.Get("电脑锁"),
                 MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
             using (OpenFileDialog d = new OpenFileDialog())
             {
@@ -340,12 +341,12 @@ namespace PCLock
                 try
                 {
                     string err = ConfigIo.ImportConfig(File.ReadAllText(d.FileName, Encoding.UTF8));
-                    if (err != null) { MessageBox.Show(this, "导入失败：" + err, "电脑锁"); return; }
+                    if (err != null) { MessageBox.Show(this, Strings.Get("导入失败：") + err, Strings.Get("电脑锁")); return; }
                     AuditLog.Write("配置导入：" + d.FileName);
                     LoadValues(cbUser.Text);
-                    MessageBox.Show(this, "已导入配置。运行态未导入，下次锁屏生效。", "电脑锁");
+                    MessageBox.Show(this, Strings.Get("已导入配置。运行态未导入，下次锁屏生效。"), Strings.Get("电脑锁"));
                 }
-                catch (Exception ex) { MessageBox.Show(this, "导入失败：" + ex.Message, "电脑锁"); }
+                catch (Exception ex) { MessageBox.Show(this, Strings.Get("导入失败：") + ex.Message, Strings.Get("电脑锁")); }
             }
         }
 
@@ -425,12 +426,12 @@ namespace PCLock
 
                 AuditLog.Write("高级规则设置修改：用户 " + u);
                 hint.Text = "已保存。部分设置（题量/规则/题库）在下次锁屏或下次登录生效。";
-                MessageBox.Show(this, "已保存为「" + u + "」的高级规则。", "电脑锁",
+                MessageBox.Show(this, Strings.Fmt("已保存为「{0}」的高级规则。", u), Strings.Get("电脑锁"),
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "保存失败：" + ex.Message, "电脑锁");
+                MessageBox.Show(this, Strings.Get("保存失败：") + ex.Message, Strings.Get("电脑锁"));
             }
         }
 
@@ -454,9 +455,9 @@ namespace PCLock
                         ",\"english\":" + BankIo.ExportEnglish(EnglishData.All) + "}";
                     File.WriteAllText(d.FileName, json, new UTF8Encoding(false));
                     AuditLog.Write("题库导出 JSON：" + d.FileName);
-                    MessageBox.Show(this, "已导出到：" + d.FileName, "电脑锁");
+                    MessageBox.Show(this, Strings.Fmt("已导出到：{0}", d.FileName), Strings.Get("电脑锁"));
                 }
-                catch (Exception ex) { MessageBox.Show(this, "导出失败：" + ex.Message, "电脑锁"); }
+                catch (Exception ex) { MessageBox.Show(this, Strings.Get("导出失败：") + ex.Message, Strings.Get("电脑锁")); }
             }
         }
 
@@ -492,9 +493,9 @@ namespace PCLock
                     }
                     File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
                     AuditLog.Write("题库导入 JSON：" + path);
-                    MessageBox.Show(this, "已写入 " + path + "，下次锁屏生效。", "电脑锁");
+                    MessageBox.Show(this, Strings.Fmt("已写入 {0}，下次锁屏生效。", path), Strings.Get("电脑锁"));
                 }
-                catch (Exception ex) { MessageBox.Show(this, "导入失败：" + ex.Message, "电脑锁"); }
+                catch (Exception ex) { MessageBox.Show(this, Strings.Get("导入失败：") + ex.Message, Strings.Get("电脑锁")); }
             }
         }
 
@@ -510,10 +511,10 @@ namespace PCLock
             string cap = QuestionPolicy.IsGradeCapped(qs, grades) ? "通过" : "失败（年级超纲）";
             string bankErr = BankIo.ValidateChinese(ChineseData.All);
             MessageBox.Show(this,
-                "批次质量：" + (err == null ? "通过" : err) + Environment.NewLine +
-                "年级上限：" + cap + Environment.NewLine +
-                "内置语文词库：" + (bankErr == null ? "通过" : bankErr),
-                "题库质量检查", MessageBoxButtons.OK,
+                Strings.Fmt("批次质量：{0}", err == null ? Strings.Get("通过") : err) + Environment.NewLine +
+                Strings.Fmt("年级上限：{0}", Strings.Get(cap)) + Environment.NewLine +
+                Strings.Fmt("内置语文词库：{0}", bankErr == null ? Strings.Get("通过") : bankErr),
+                Strings.Get("题库质量检查"), MessageBoxButtons.OK,
                 err == null && cap == "通过" ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
         }
 

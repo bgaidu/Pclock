@@ -115,6 +115,7 @@ namespace PCLock
             close.Click += delegate { Close(); };
             Controls.Add(close);
 
+            Program.Localize(this);
             Program.FlattenButtons(this);
             Next();
         }
@@ -176,7 +177,7 @@ namespace PCLock
 
         void UpdateStats()
         {
-            statsLabel.Text = "已练 " + practiced + " 题 · 答对 " + correct + " 题 · 连对 " + streak + " 题";
+            statsLabel.Text = Strings.Fmt("已练 {0} 题 · 答对 {1} 题 · 连对 {2} 题", practiced, correct, streak);
         }
     }
 }

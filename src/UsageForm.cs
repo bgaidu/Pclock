@@ -44,8 +44,8 @@ namespace PCLock
             Controls.Add(chart);
 
             Label total = new Label();
-            total.Text = "今日已用：" + (Store.GetUsedToday(user) / 60) + " 分 " +
-                (Store.GetUsedToday(user) % 60) + " 秒";
+            total.Text = Strings.Fmt("今日已用：{0} 分 {1} 秒", Store.GetUsedToday(user) / 60,
+                Store.GetUsedToday(user) % 60);
             total.AutoSize = true;
             total.Location = new Point(16, 262);
             Controls.Add(total);
@@ -90,6 +90,7 @@ namespace PCLock
                 Environment.NewLine + "本地异常摘要：" + (crashes == "" ? "无 err.txt" : crashes);
             Controls.Add(summary);
 
+            Program.Localize(this);
             Program.FlattenButtons(this);
         }
 
@@ -130,12 +131,12 @@ namespace PCLock
                 {
                     File.WriteAllText(d.FileName, UsageCsv.Build(DateTime.Now, seconds), new UTF8Encoding(true));
                     AuditLog.Write("使用记录导出 CSV：" + d.FileName);
-                    MessageBox.Show(this, "已导出到：" + d.FileName, "电脑锁",
+                    MessageBox.Show(this, Strings.Fmt("已导出到：{0}", d.FileName), Strings.Get("电脑锁"),
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(this, "导出失败：" + ex.Message, "电脑锁");
+                    MessageBox.Show(this, Strings.Get("导出失败：") + ex.Message, Strings.Get("电脑锁"));
                 }
             }
         }

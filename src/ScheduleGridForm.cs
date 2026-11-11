@@ -60,6 +60,7 @@ namespace PCLock
             Controls.Add(ok);
             AcceptButton = ok;
 
+            Program.Localize(this);
             Program.FlattenButtons(this);
             result.Text = BuildRule();
         }

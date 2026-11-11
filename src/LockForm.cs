@@ -116,6 +116,7 @@ namespace PCLock
             hook = new LowLevelHook();
 
             // 扁平化按钮，规避视觉样式绘制期偶发的"创建窗口句柄"失败
+            Program.Localize(this);
             Program.FlattenButtons(this);
         }
 
@@ -342,7 +343,7 @@ namespace PCLock
                 string rules = Store.GetRules(user);
                 questionLabel.Text = string.IsNullOrWhiteSpace(rules)
                     ? "请使用家长 PIN 解锁" : ("当前规则：\n" + rules);
-                statusLabel.Text = "休息结束后自动解锁，或由家长输入 PIN / 临时放行。";
+                statusLabel.Text = Strings.Get("休息结束后自动解锁，或由家长输入 PIN / 临时放行。");
                 restLabel.Visible = hardReason.IndexOf("休息") >= 0;
             }
             else
@@ -366,7 +367,7 @@ namespace PCLock
             if (string.IsNullOrWhiteSpace(spec)) spec = Store.GetWindow(user);
             int mins = NextWindow.MinutesUntil(WindowRules.Parse(spec), DateTime.Now);
             string s = Strings.Get("时段开始后自动解锁，或由家长输入 PIN 解锁。");
-            return mins > 0 ? s + "　距下次可用还有 " + NextWindow.Format(mins) : s;
+            return mins > 0 ? s + Strings.Fmt("　距下次可用还有 {0}", NextWindow.Format(mins)) : s;
         }
 
         static Label MakeLabel(string text, float size, FontStyle style, Color color)
@@ -515,14 +516,14 @@ namespace PCLock
             if (questions != null && qIndex < questions.Count)
             {
                 Subject s = questions[qIndex].Subject;
-                subj = (s == Subject.Chinese) ? "语文" : (s == Subject.Math) ? "数学" : "英语";
+                subj = Strings.Get((s == Subject.Chinese) ? "语文" : (s == Subject.Math) ? "数学" : "英语");
             }
             string extra = (questions.Count > baseQuestionCount)
-                ? " + " + (questions.Count - baseQuestionCount) + " 道加练题" : "";
-            string phase = (qIndex >= baseQuestionCount && questions.Count > baseQuestionCount) ? "（加练）" : "";
+                ? Strings.Fmt(" + {0} 道加练题", questions.Count - baseQuestionCount) : "";
+            string phase = (qIndex >= baseQuestionCount && questions.Count > baseQuestionCount) ? Strings.Get("（加练）") : "";
             string cheer = correctCount > 0 ? Store.GetEncourageText(user) + "　" : "";
-            statusLabel.Text = cheer + "共 " + baseQuestionCount + " 题" + extra + "（" + subj + "），需连续答对 " +
-                requiredStreak + " 道" + phase + "（当前第 " + cur + " 题，已连对 " + correctCount + " 题）";
+            statusLabel.Text = cheer + Strings.Fmt("共 {0} 题{1}（{2}），需连续答对 {3} 道{4}（当前第 {5} 题，已连对 {6} 题）",
+                baseQuestionCount, extra, subj, requiredStreak, phase, cur, correctCount);
         }
 
         void SubmitAnswer()
@@ -532,7 +533,7 @@ namespace PCLock
             int v;
             if (!int.TryParse(answerBox.Text.Trim(), out v))
             {
-                statusLabel.Text = "请输入数字答案";
+                statusLabel.Text = Strings.Get("请输入数字答案");
                 answerBox.Focus();
                 return;
             }
@@ -616,11 +617,11 @@ namespace PCLock
                 feedbackLabel.Visible = true;
                 continueBtn.Visible = true;
                 continueBtn.Enabled = false;   // 冷却结束后才可点
-                statusLabel.Text = "回答错误，全部清零重新开始，请 " + wrongLeft + " 秒后点「继续答题」";
+                statusLabel.Text = Strings.Fmt("回答错误，全部清零重新开始，请 {0} 秒后点「继续答题」", wrongLeft);
             }
             else
             {
-                statusLabel.Text = "回答错误，全部清零重新开始，请 " + wrongLeft + " 秒后再试";
+                statusLabel.Text = Strings.Fmt("回答错误，全部清零重新开始，请 {0} 秒后再试", wrongLeft);
             }
             LayoutControls();
         }
@@ -676,7 +677,7 @@ namespace PCLock
                         else
                         {
                             pinOkBtn.Enabled = true;
-                            pinLabel.Text = "PIN 错误（还可尝试 " + (Constants.PinMaxFails - pinFails) + " 次）";
+                            pinLabel.Text = Strings.Fmt("PIN 错误（还可尝试 {0} 次）", Constants.PinMaxFails - pinFails);
                             AuditLog.Write("密码验证失败：锁屏家长入口（还可尝试 " + (Constants.PinMaxFails - pinFails) + " 次）");
                         }
                     });
@@ -719,7 +720,7 @@ namespace PCLock
                         }
                         else
                         {
-                            statusLabel.Text = "回答错误，请 " + wrongLeft + " 秒后再试";
+                            statusLabel.Text = Strings.Fmt("回答错误，请 {0} 秒后再试", wrongLeft);
                         }
                     }
                     if (pinCooldown > 0)
@@ -729,11 +730,11 @@ namespace PCLock
                         {
                             pinBox.Enabled = true;
                             pinOkBtn.Enabled = true;
-                            pinLabel.Text = "家长 PIN：";
+                            pinLabel.Text = Strings.Get("家长 PIN：");
                         }
                         else
                         {
-                            pinLabel.Text = "PIN 错误次数过多，请 " + pinCooldown + " 秒后再试";
+                            pinLabel.Text = Strings.Fmt("PIN 错误次数过多，请 {0} 秒后再试", pinCooldown);
                         }
                     }
                 }

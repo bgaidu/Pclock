@@ -12,19 +12,20 @@ namespace PCLock
         {
             tray = new NotifyIcon();
             tray.Icon = Program.LoadAppIcon() ?? SystemIcons.Shield;
-            tray.Text = "电脑锁 - 运行中";
+            tray.Text = Strings.Get("电脑锁 - 运行中");
             tray.Visible = true;
             ContextMenuStrip menu = new ContextMenuStrip();
-            menu.Items.Add("设置…（需家长PIN）", null, delegate { ShowSettings(); });
-            menu.Items.Add("立即锁定", null, delegate { LockNow(); });
+            menu.Items.Add(Strings.Get("设置…（需家长PIN）"), null, delegate { ShowSettings(); });
+            menu.Items.Add(Strings.Get("立即锁定"), null, delegate { LockNow(); });
             // P1-9 练习模式：不解锁、不消耗额度，主倒计时照常运行（默认关闭时不显示）
             if (Store.IsPracticeEnabled(currentUser))
-                menu.Items.Add("练习模式（不解锁）", null, delegate { OpenPractice(); });
+                menu.Items.Add(Strings.Get("练习模式（不解锁）"), null, delegate { OpenPractice(); });
             // P1-10 使用记录
-            menu.Items.Add("使用记录（7 天）", null, delegate
+            menu.Items.Add(Strings.Get("使用记录（7 天）"), null, delegate
             {
                 using (UsageForm uf = new UsageForm()) uf.ShowDialog();
             });
+            Program.LocalizeItems(menu.Items);
             tray.ContextMenuStrip = menu;
             tray.DoubleClick += delegate { ShowSettings(); };
         }
@@ -37,7 +38,7 @@ namespace PCLock
             try
             {
                 bool ok = false;
-                using (PinDialog pd = new PinDialog("家长验证", "请输入家长 PIN：",
+                using (PinDialog pd = new PinDialog(Strings.Get("家长验证"), Strings.Get("请输入家长 PIN："),
                     delegate(string s) { return Store.VerifyPin(s); }))
                 {
                     ok = (pd.ShowDialog() == DialogResult.OK);
@@ -45,8 +46,8 @@ namespace PCLock
                 if (!ok) return;
                 // P0-1：旧安装可能仍在用默认 PIN，进设置时提醒家长立即修改
                 if (Store.IsDefaultPinStillInUse())
-                    MessageBox.Show("当前仍在使用默认密码 1234，请立即修改家长 PIN 与卸载密码。",
-                        "电脑锁", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show(Strings.Get("当前仍在使用默认密码 1234，请立即修改家长 PIN 与卸载密码。"),
+                        Strings.Get("电脑锁"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 using (SettingsForm sf = new SettingsForm()) sf.ShowDialog();
             }
             finally
