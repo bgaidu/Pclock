@@ -337,5 +337,16 @@ namespace PCLock
             if (streak > questionCount) return questionCount;
             return streak;
         }
+
+        /// <summary>
+        /// 题库因学期/题库名过滤而不足题量时，把「需连对」钳到实际题数。
+        /// 不钳会出现「状态栏写共 10 题、实际只有 3 题」——数字对不上，且配置形同失效。
+        /// </summary>
+        public static int EffectiveStreak(int configured, int available)
+        {
+            if (available < 1) return 1;
+            if (configured < 1) return available;
+            return configured > available ? available : configured;
+        }
     }
 }

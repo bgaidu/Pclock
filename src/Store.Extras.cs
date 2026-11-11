@@ -233,6 +233,55 @@ namespace PCLock
             ReviewState s = GetReviewState(user, key);
             s = SpacedRepetition.Review(s, correct, DateTime.UtcNow.Ticks);
             SetReviewState(user, key, s);
+            answerCount++;
+            if (answerCount % 25 == 0) PruneQuestionStats(user);   // 偶尔清一次，避免每次作答都枚举注册表
+        }
+
+        // === 运行期维护（第四批）：日志保留期 / 统计键上限 ===
+        public static int GetLogKeepDays()
+        {
+            return ClampMin(GetInt("LogKeepDays", PCLockConstants.DefaultLogKeepDays), 0, 3650);
+        }
+        public static void SetLogKeepDays(int days) { SetInt("LogKeepDays", ClampMin(days, 0, 3650)); }
+
+        public static int GetStatCap()
+        {
+            return ClampMin(GetInt("StatCap", PCLockConstants.DefaultStatCap), 50, 5000);
+        }
+        public static void SetStatCap(int n) { SetInt("StatCap", ClampMin(n, 50, 5000)); }
+
+        static int answerCount;
+
+        /// <summary>
+        /// 统计键超过上限时按「作答次数少 + 正确率高」优先删除，连带删掉对应的 SM-2 进度键。
+        /// 一年下来每用户可产生数千个 Stat:/Rev: 值，不清会持续膨胀注册表。
+        /// </summary>
+        public static int PruneQuestionStats(string user)
+        {
+            try
+            {
+                int cap = GetStatCap();
+                string[] keys = ListStatKeys(user);
+                if (!Housekeeping.ShouldPruneStat(keys.Length, cap)) return 0;
+                string[] vals = new string[keys.Length];
+                for (int i = 0; i < keys.Length; i++) vals[i] = GetQuestionStat(user, keys[i]);
+                List<string> drop = Housekeeping.SelectKeysToDrop(keys, vals, cap);
+                int n = 0;
+                foreach (string k in drop)
+                {
+                    try { root.DeleteValue(UKey(user, "Stat:" + k), false); n++; }
+                    catch (Exception) { }
+                    try { root.DeleteValue(UKey(user, "Rev:" + k), false); }
+                    catch (Exception) { }
+                }
+                if (n > 0) Log("统计键清理：用户 " + user + " 删除 " + n + " 条");
+                return n;
+            }
+            catch (Exception ex)
+            {
+                Log("PruneQuestionStats 失败: " + ex.Message);
+                return 0;
+            }
         }
 
         /// <summary>列出有统计记录的题 key（供弱项分析 / 到期复习使用）</summary>

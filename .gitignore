@@ -26,6 +26,9 @@ _Version.cs
 # 运行期生成的数据/记录（不入库）
 logs/
 review.json
+review.json.bak
+review-*.json
+banks/
 docs/manual-regression-results.csv
 tests/_tests.exe
 installer/output/

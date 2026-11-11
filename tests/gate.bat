@@ -45,5 +45,8 @@ if not exist "bin\Debug\PCLock.exe" (
 echo === 4/4 Source/test manifest sanity ===
 if not exist "src\Policy.cs"       ( echo [FAIL] src\Policy.cs missing & exit /b 1 )
 if not exist "src\Store.Extras.cs" ( echo [FAIL] src\Store.Extras.cs missing & exit /b 1 )
+if not exist "src\Housekeeping.cs" ( echo [FAIL] src\Housekeeping.cs missing & exit /b 1 )
+if not exist "src\BankSet.cs"      ( echo [FAIL] src\BankSet.cs missing & exit /b 1 )
+if not exist "tests\Batch4Tests.cs" ( echo [FAIL] tests\Batch4Tests.cs missing & exit /b 1 )
 echo [OK] gate passed: tests + Release + Debug + manifest
 exit /b 0

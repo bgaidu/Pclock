@@ -11,8 +11,9 @@ if not exist "%CSC%" set CSC=%SystemRoot%\Microsoft.NET\Framework\v4.0.30319\csc
 "%CSC%" /nologo /target:exe /out:tests\_tests.exe /codepage:65001 /r:System.dll ^
   src\Constants.cs src\ChineseData.cs src\EnglishData.cs src\Questions.cs src\Store.cs ^
   src\Policy.cs src\BankIo.cs src\QuestionPolicy.cs src\Learning.cs src\ConfigIo.cs src\Strings.cs ^
+  src\Housekeeping.cs src\AuditLog.cs src\BankSet.cs ^
   tests\TUnit.cs tests\UnitTests.cs tests\HashTests.cs tests\MathAnswerTests.cs tests\OfflineDeductTests.cs ^
-  tests\PolicyTests.cs tests\BankIoTests.cs tests\QuestionPolicyTests.cs tests\Batch3Tests.cs
+  tests\PolicyTests.cs tests\BankIoTests.cs tests\QuestionPolicyTests.cs tests\Batch3Tests.cs tests\Batch4Tests.cs
 
 rem NOTE: the file list above is intentionally explicit (core files only).
 rem Do NOT glob src\*.cs here: it would pull in Program.cs/App.cs/LockForm.cs
@@ -20,6 +21,14 @@ rem (WinForms UI + a second Main entry point) which the test build must exclude.
 rem When a new testable core file is added under src\, add it to this list.
 rem (src\Store.cs deliberately does NOT reference src\Program.cs: its logging goes
 rem  through an injectable sink, see Store.SetLogSink.)
+
+rem A compile error must fail the script: without this check csc's non-zero exit
+rem is swallowed by the "if exist" below and CI silently reports success.
+if !ERRORLEVEL! NEQ 0 (
+    echo [FAIL] test build failed
+    if exist tests\_tests.exe del tests\_tests.exe
+    exit /b 1
+)
 
 if exist tests\_tests.exe (
     tests\_tests.exe

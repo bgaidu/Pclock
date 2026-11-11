@@ -194,6 +194,9 @@ namespace PCLock
                 // P0-1 首次运行强制设置两个密码（消除默认 1234）；旧安装不弹窗
                 Store.Init();
                 Strings.Lang = Store.GetLanguage();
+                // 运行期维护：清理超过保留期的审计日志（默认 90 天，0=永久；任何失败静默）
+                try { Housekeeping.CleanupLogs(AuditLog.LogDirectory, DateTime.Now, Store.GetLogKeepDays()); }
+                catch (Exception) { }
                 if (Store.NeedsFirstPinSetup())
                 {
                     Log("First-run PIN setup required");

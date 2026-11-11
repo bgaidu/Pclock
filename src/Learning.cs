@@ -196,9 +196,37 @@ namespace PCLock
     /// </summary>
     public static class ReviewBank
     {
-        static string FilePath
+        /// <summary>旧版本共用的错题库文件（未按用户隔离）：首次读取时归给当前用户并备份为 .bak</summary>
+        public const string LegacyFileName = "review.json";
+
+        static string Dir
         {
-            get { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "review.json"); }
+            get { return AppDomain.CurrentDomain.BaseDirectory; }
+        }
+
+        /// <summary>按用户隔离的错题库文件名（review-&lt;user&gt;.json），避免 Windows 多用户共用一份</summary>
+        public static string FileNameFor(string user)
+        {
+            return "review-" + SafeName(user) + ".json";
+        }
+
+        /// <summary>用户名安全化：只保留字母数字，其余替换为下划线（防非法路径字符 / 超长名）</summary>
+        public static string SafeName(string user)
+        {
+            if (string.IsNullOrEmpty(user)) return "default";
+            StringBuilder sb = new StringBuilder();
+            foreach (char c in user)
+            {
+                if (sb.Length >= 40) break;
+                sb.Append(char.IsLetterOrDigit(c) ? c : '_');
+            }
+            string s = sb.ToString().Trim('_');
+            return s.Length == 0 ? "default" : s;
+        }
+
+        static string PathFor(string user)
+        {
+            return Path.Combine(Dir, FileNameFor(user));
         }
 
         public static string Export(IList<ReviewItem> items)
@@ -231,13 +259,38 @@ namespace PCLock
             return sb.Append("]}").ToString();
         }
 
-        public static List<ReviewItem> Load()
+        /// <summary>读取该用户的错题缓存；旧版共用的 review.json 会一次性迁移过来（按用户分文件）</summary>
+        public static List<ReviewItem> Load(string user)
+        {
+            string path = PathFor(user);
+            try
+            {
+                if (!File.Exists(path)) MigrateLegacy(user, path);
+                if (!File.Exists(path)) return new List<ReviewItem>();
+                return ParseItems(File.ReadAllText(path, Encoding.UTF8));
+            }
+            catch (Exception) { return new List<ReviewItem>(); }
+        }
+
+        static void MigrateLegacy(string user, string path)
+        {
+            try
+            {
+                string legacy = Path.Combine(Dir, LegacyFileName);
+                if (!File.Exists(legacy)) return;
+                File.WriteAllText(path, File.ReadAllText(legacy, Encoding.UTF8), new UTF8Encoding(false));
+                File.Move(legacy, legacy + ".bak");   // 留原始数据，不删除；此后只读写按用户的文件
+                AuditLog.Write("错题库按用户迁移：" + LegacyFileName + " -> " + FileNameFor(user));
+            }
+            catch (Exception) { }
+        }
+
+        static List<ReviewItem> ParseItems(string json)
         {
             List<ReviewItem> r = new List<ReviewItem>();
             try
             {
-                if (!File.Exists(FilePath)) return r;
-                object root = MiniJson.Parse(File.ReadAllText(FilePath, Encoding.UTF8));
+                object root = MiniJson.Parse(json);
                 Dictionary<string, object> doc = root as Dictionary<string, object>;
                 if (doc == null) return r;
                 object arr;
@@ -294,17 +347,17 @@ namespace PCLock
             return v is double ? (long)(double)v : 0;
         }
 
-        static void Save(List<ReviewItem> items)
+        static void Save(string user, List<ReviewItem> items)
         {
-            try { File.WriteAllText(FilePath, Export(items), new UTF8Encoding(false)); }
+            try { File.WriteAllText(PathFor(user), Export(items), new UTF8Encoding(false)); }
             catch (Exception) { }
         }
 
-        /// <summary>答错后记录（或更新）一道错题；答对到期题后由 Remove 清掉</summary>
-        public static void RecordWrong(Question q, ReviewState state)
+        /// <summary>答错后记录（或更新）一道错题；答对到期题后由 Remove 清掉。按用户分文件。</summary>
+        public static void RecordWrong(Question q, string user, ReviewState state)
         {
             if (q == null) return;
-            List<ReviewItem> items = Load();
+            List<ReviewItem> items = Load(user);
             string key = QuestionStats.KeyOf(q);
             ReviewItem found = null;
             foreach (ReviewItem it in items) if (it.Key == key) { found = it; break; }
@@ -312,31 +365,65 @@ namespace PCLock
             found.Q = q;
             found.DueUtcTicks = state.DueUtcTicks;
             if (items.Count > 200) items.RemoveRange(0, items.Count - 200);
-            Save(items);
+            Save(user, items);
         }
 
-        public static void Remove(string key)
+        /// <summary>答对某题后从错题库移除；不存在时不写文件（避免每题一次无谓 IO）</summary>
+        public static bool Remove(string user, string key)
         {
-            List<ReviewItem> items = Load();
-            for (int i = items.Count - 1; i >= 0; i--) if (items[i].Key == key) items.RemoveAt(i);
-            Save(items);
+            if (string.IsNullOrEmpty(key)) return false;
+            List<ReviewItem> items = Load(user);
+            bool removed = false;
+            for (int i = items.Count - 1; i >= 0; i--)
+                if (items[i].Key == key) { items.RemoveAt(i); removed = true; }
+            if (removed) Save(user, items);
+            return removed;
         }
 
-        /// <summary>把到期错题替换到题目前 N 个位置（题量不变），实现「到期优先」</summary>
+        /// <summary>
+        /// 把到期错题替换到题目前 N 个位置（题量不变），实现「到期优先」。
+        /// 会跳过本批已有的题与重复的错题，避免同一批出现两道一样的题。
+        /// </summary>
         public static int MixDue(List<Question> questions, string user, int maxCount)
         {
             if (questions == null || questions.Count == 0 || maxCount <= 0) return 0;
-            long now = DateTime.UtcNow.Ticks;
-            List<ReviewItem> items = Load();
-            int used = 0;
+            string[] existing = new string[questions.Count];
+            for (int i = 0; i < questions.Count; i++) existing[i] = QuestionStats.KeyOf(questions[i]);
+            List<Question> pick = SelectDueToMix(Load(user), existing, DateTime.UtcNow.Ticks, maxCount);
+            return ApplyMix(questions, pick);
+        }
+
+        /// <summary>纯函数：把选中的错题替换到题目前若干个位置（题量不变）</summary>
+        public static int ApplyMix(List<Question> questions, List<Question> pick)
+        {
+            if (questions == null || pick == null || questions.Count == 0) return 0;
+            int n = Math.Min(questions.Count, pick.Count);
+            for (int i = 0; i < n; i++) questions[i] = pick[i];
+            return n;
+        }
+
+        /// <summary>
+        /// 纯函数：从错题缓存里选出可以混入本批的题（到期、未在本批、互不重复），最多 maxCount 道。
+        /// 单独抽出来便于单测，不依赖文件系统。
+        /// </summary>
+        public static List<Question> SelectDueToMix(List<ReviewItem> items, string[] existingKeys, long nowTicks, int maxCount)
+        {
+            List<Question> r = new List<Question>();
+            if (items == null || maxCount <= 0) return r;
+            HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
+            if (existingKeys != null)
+                foreach (string k in existingKeys)
+                    if (!string.IsNullOrEmpty(k)) seen.Add(k);
             foreach (ReviewItem it in items)
             {
-                if (used >= maxCount || used >= questions.Count) break;
-                if (it.DueUtcTicks > now || it.Q == null) continue;
-                questions[used] = it.Q;
-                used++;
+                if (r.Count >= maxCount) break;
+                if (it == null || it.Q == null) continue;
+                if (it.DueUtcTicks > nowTicks) continue;                 // 未到期
+                string key = string.IsNullOrEmpty(it.Key) ? QuestionStats.KeyOf(it.Q) : it.Key;
+                if (!seen.Add(key)) continue;                             // 已在本批 / 已选过
+                r.Add(it.Q);
             }
-            return used;
+            return r;
         }
     }
 

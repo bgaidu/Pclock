@@ -61,17 +61,17 @@ namespace PCLock
             english = LoadEnglishEntries();
         }
 
-        // 外部题库优先：程序目录下 chinese.txt / english.txt 若存在且能解析则使用，
+        // 外部题库优先：chinese.txt / english.txt 与 banks\*.txt（每文件一个题库）合并后若可用则使用，
         // 否则回退到程序内置的 ChineseData.All / EnglishData.All（兜底，保证永不空题库）。
         static List<WordEntry> LoadWordEntries()
         {
-            List<WordEntry> ext = ParseChineseFile(Path.Combine(AppDir(), "chinese.txt"));
+            List<WordEntry> ext = BankSet.LoadChinese(AppDir());
             if (ext != null && ext.Count > 0) return ext;
             return new List<WordEntry>(ChineseData.All);
         }
         static List<EnglishEntry> LoadEnglishEntries()
         {
-            List<EnglishEntry> ext = ParseEnglishFile(Path.Combine(AppDir(), "english.txt"));
+            List<EnglishEntry> ext = BankSet.LoadEnglish(AppDir());
             if (ext != null && ext.Count > 0) return ext;
             return new List<EnglishEntry>(EnglishData.All);
         }
@@ -80,54 +80,6 @@ namespace PCLock
         {
             try { return Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location); }
             catch { return "."; }
-        }
-
-        static List<WordEntry> ParseChineseFile(string path)
-        {
-            if (!File.Exists(path)) return null;
-            List<WordEntry> list = new List<WordEntry>();
-            try
-            {
-                foreach (string raw in File.ReadAllLines(path, Encoding.UTF8))
-                {
-                    string line = raw.Trim();
-                    if (line == "" || line.StartsWith("#")) continue;
-                    string[] p = line.Split('|');
-                    if (p.Length < 4) continue;
-                    int g;
-                    if (!int.TryParse(p[0], out g)) continue;
-                    WordEntry we = new WordEntry { Grade = g, Word = p[1].Trim(),
-                        Pinyin = p[2].Trim(), Meaning = p[3].Trim() };
-                    // 可选扩展列：学期（上/下）、题库名；旧 4 列格式完全兼容
-                    if (p.Length >= 5) { we.Term = ParseTerm(p[4]); we.Bank = p.Length >= 6 ? p[5].Trim() : ""; }
-                    list.Add(we);
-                }
-            }
-            catch { return null; }
-            return list;
-        }
-
-        static List<EnglishEntry> ParseEnglishFile(string path)
-        {
-            if (!File.Exists(path)) return null;
-            List<EnglishEntry> list = new List<EnglishEntry>();
-            try
-            {
-                foreach (string raw in File.ReadAllLines(path, Encoding.UTF8))
-                {
-                    string line = raw.Trim();
-                    if (line == "" || line.StartsWith("#")) continue;
-                    string[] p = line.Split('|');
-                    if (p.Length < 3) continue;
-                    int g;
-                    if (!int.TryParse(p[0], out g)) continue;
-                    EnglishEntry ee = new EnglishEntry { Grade = g, En = p[1].Trim(), Zh = p[2].Trim() };
-                    if (p.Length >= 4) { ee.Term = ParseTerm(p[3]); ee.Bank = p.Length >= 5 ? p[4].Trim() : ""; }
-                    list.Add(ee);
-                }
-            }
-            catch { return null; }
-            return list;
         }
 
         /// <summary>出 count 道题。</summary>
@@ -749,9 +701,12 @@ namespace PCLock
         {
             bool statementTrue = NextRnd(2) == 0;
             int shown = statementTrue ? q.Answer : q.Answer + 1;
+            // 口算题题干本身以「= ?」结尾，直接拼会变成「12 × 3 = ? = 36，对吗？」
+            string stem = q.Prompt == null ? "" : q.Prompt.Replace("= ?", "").TrimEnd();
+            if (stem.Length == 0) stem = q.Prompt;
             Question r = Clone(q);
             r.Type = QType.TrueFalse;
-            r.Prompt = q.Prompt + " = " + shown + "，对吗？";
+            r.Prompt = stem + " = " + shown + "，对吗？";
             r.Options = new string[] { "对", "错" };
             r.CorrectIndex = statementTrue ? 0 : 1;
             r.Answer = -1;

@@ -336,7 +336,8 @@ public class Program
             typeof(WindowTests), typeof(QuestionTests), typeof(QuestionBankEdgeTests),
             typeof(HashTests), typeof(MathAnswerTests), typeof(OfflineDeductTests),
             typeof(PolicyTests), typeof(MutationTests), typeof(BankIoTests), typeof(QuestionPolicyTests),
-            typeof(LearningTests), typeof(ConfigIoTests), typeof(NewQuestionTypeTests) });
+            typeof(LearningTests), typeof(ConfigIoTests), typeof(NewQuestionTypeTests),
+            typeof(Batch4Tests) });
         return fails == 0 ? 0 : 1;
     }
 }

@@ -20,7 +20,7 @@ namespace PCLock
         CheckBox chkAntiTamper, chkFeedback, chkStar, chkPractice;
         CheckBox chkMathChoice, chkChineseWord, chkTrueFalse, chkChildGrade, chkReview;
         ComboBox cbDifficulty, cbTerm, cbLang;
-        TextBox txtBank, txtHold, txtEncourage, txtHolidays;
+        TextBox txtBank, txtHold, txtEncourage, txtHolidays, txtLogKeep;
         Label hint;
 
         public AdvancedSettingsForm()
@@ -294,6 +294,20 @@ namespace PCLock
             Label note = L("学期 / 题库名来自外部词库可选列；内置题库无学期标签时按全学年处理。", 15, 315);
             note.ForeColor = Color.DimGray;
             p.Controls.Add(note);
+
+            p.Controls.Add(L("日志保留天数（0=永久，全局）", 15, 345));
+            txtLogKeep = B(200, 342, 60); p.Controls.Add(txtLogKeep);
+            Label note2 = L("默认 90 天：启动时清理更早的 logs\\*.log，删除失败静默。", 270, 345);
+            note2.ForeColor = Color.DimGray;
+            p.Controls.Add(note2);
+
+            // 让家长看得见「现在能填哪些题库名」：banks\*.txt 的文件名即题库名
+            string[] banks = BankSet.CollectBankNames(AppDomain.CurrentDomain.BaseDirectory);
+            Label note3 = L(banks.Length == 0
+                ? "多题库：把 chinese.txt / english.txt 拆成 banks\\<题库名>.txt，文件名即题库名。"
+                : "可用题库：" + string.Join("、", banks), 15, 372);
+            note3.ForeColor = Color.DimGray;
+            p.Controls.Add(note3);
         }
 
         void ExportConfigToFile()
@@ -362,6 +376,7 @@ namespace PCLock
             txtHold.Text = Store.GetFeedbackHoldSec(user).ToString();
             txtEncourage.Text = Store.GetEncourageText(user);
             txtHolidays.Text = Store.GetHolidayDates();
+            txtLogKeep.Text = Store.GetLogKeepDays().ToString();
             chkMathChoice.Checked = Store.IsMathChoiceOn(user);
             chkChineseWord.Checked = Store.IsChineseWordOn(user);
             chkTrueFalse.Checked = Store.IsTrueFalseOn(user);
@@ -401,6 +416,7 @@ namespace PCLock
                 Store.SetFeedbackHoldSec(u, Int(txtHold.Text, 0));
                 Store.SetEncourageText(u, txtEncourage.Text);
                 Store.SetHolidayDates(txtHolidays.Text);
+                Store.SetLogKeepDays(Int(txtLogKeep.Text, Constants.DefaultLogKeepDays));
                 Store.SetMathChoiceOn(u, chkMathChoice.Checked);
                 Store.SetChineseWordOn(u, chkChineseWord.Checked);
                 Store.SetTrueFalseOn(u, chkTrueFalse.Checked);

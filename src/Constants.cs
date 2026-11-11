@@ -69,6 +69,8 @@ namespace PCLock
         public const int TimeTamperToleranceSec = 300;      // 回拨容差：5 分钟内不误报
         public const int UsageHistoryDays = 7;             // 使用记录统计天数
         public const int DefaultRestMinutes = 10;          // 护眼休息建议值（配置为 0 时不启用）
+        public const int DefaultLogKeepDays = 90;          // 审计日志保留天数（0 = 永久保留）
+        public const int DefaultStatCap = 600;             // 按题统计键上限（防注册表无限膨胀）
 
         // === 默认值 ===
         public const int DefaultGrade = 3;

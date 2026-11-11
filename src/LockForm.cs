@@ -458,7 +458,11 @@ namespace PCLock
             questions = QuestionBank.GetBatchEx(grades, subs, count,
                 Store.GetPreferDifficulty(user), Store.GetTerm(user), Store.GetBankFilter(user),
                 Store.IsMathChoiceOn(user), Store.IsChineseWordOn(user), Store.IsTrueFalseOn(user));
-            // 到期错题优先复习（本地 review.json，默认关闭）
+            // 题库收窄（学期/题库名过滤）后可能不足题量：按实际题数显示，并把「需连对」钳到实际题数，
+            // 否则状态栏会写着「共 10 题」而孩子答到第 4 题就无题可答（配置失效且数字对不上）
+            if (baseQuestionCount > questions.Count) baseQuestionCount = questions.Count;
+            requiredStreak = QuizConfig.EffectiveStreak(requiredStreak, baseQuestionCount);
+            // 到期错题优先复习（本地 review-<user>.json，默认关闭）
             if (Store.IsReviewOn(user)) ReviewBank.MixDue(questions, user, count / 3);
 
             // P0-6 加练池：欠的题追加到本批尾部，必须全部答对才能解锁；跨天/重启保留
@@ -552,7 +556,7 @@ namespace PCLock
             Question answered = questions[qIndex];
             correctQuestions.Add(answered);
             Store.RecordAnswer(user, answered, true);       // 按题统计 + SM-2 复习进度
-            if (Store.IsReviewOn(user)) ReviewBank.Remove(QuestionStats.KeyOf(answered));
+            if (Store.IsReviewOn(user)) ReviewBank.Remove(user, QuestionStats.KeyOf(answered));
             if (qIndex >= baseQuestionCount && questions.Count > baseQuestionCount)
             {
                 // 加练题答对：逐道扣除待加练数（跨天 / 重启保留）
@@ -593,7 +597,7 @@ namespace PCLock
             Store.SetPracticeState(user, ps);
             Store.RecordAnswer(user, wrong, false);
             if (Store.IsReviewOn(user))
-                ReviewBank.RecordWrong(wrong, Store.GetReviewState(user, QuestionStats.KeyOf(wrong)));
+                ReviewBank.RecordWrong(wrong, user, Store.GetReviewState(user, QuestionStats.KeyOf(wrong)));
 
             correctCount = 0;
             correctQuestions.Clear();
