@@ -10,6 +10,10 @@ namespace PCLock
     /// <summary>
     /// P0/P1 新增规则的统一设置窗口。所有项默认关闭 / 保持旧行为，按 Windows 用户隔离。
     /// 从家长设置菜单进入（需先通过家长 PIN）。
+    ///
+    /// 布局约定：全部用 TableLayoutPanel 逐行堆叠（PageGrid），不再手写坐标。
+    /// 手写坐标的两个老问题：① 复选框 AutoSize 后比固定 x 的按钮更宽，两者直接叠在一起；
+    /// ② 标签文字（长句/英文翻译）变长后压住右侧输入框。按行堆叠后同类控件永不相交。
     /// </summary>
     public class AdvancedSettingsForm : Form
     {
@@ -33,23 +37,40 @@ namespace PCLock
             StartPosition = FormStartPosition.CenterParent;
             ShowInTaskbar = false;
             TopMost = true;
-            ClientSize = new Size(560, 500);
+            ClientSize = new Size(600, 580);
             this.Icon = Program.LoadAppIcon();
 
-            Label ul = L("配置对象：", 15, 16);
-            Controls.Add(ul);
+            // ---- 根布局：配置对象 / 选项卡（占满）/ 状态提示 / 按钮 ----
+            TableLayoutPanel root = new TableLayoutPanel();
+            root.Dock = DockStyle.Fill;
+            root.Padding = new Padding(12, 10, 12, 10);
+            root.ColumnCount = 2;
+            root.RowCount = 4;
+            root.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));   // 两行提示的高度
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            Controls.Add(root);
+
+            Label ul = PageGrid.MakeLabel("配置对象：");
+            ul.Margin = new Padding(0, 4, 10, 8);
+            root.Controls.Add(ul, 0, 0);
+
             cbUser = new ComboBox();
-            cbUser.Location = new Point(90, 12);
-            cbUser.Size = new Size(180, 24);
+            cbUser.Size = new Size(200, 24);
             cbUser.DropDownStyle = ComboBoxStyle.DropDownList;
+            cbUser.Anchor = AnchorStyles.Left;
+            cbUser.Margin = new Padding(0, 0, 0, 8);
             cbUser.Items.AddRange(Store.ListUsers());
-            cbUser.SelectedIndex = 0;
+            if (cbUser.Items.Count > 0) cbUser.SelectedIndex = 0;
             cbUser.SelectedIndexChanged += delegate { LoadValues(cbUser.Text); };
-            Controls.Add(cbUser);
+            root.Controls.Add(cbUser, 1, 0);
 
             TabControl tabs = new TabControl();
-            tabs.Location = new Point(12, 46);
-            tabs.Size = new Size(536, 400);
+            tabs.Dock = DockStyle.Fill;
+            tabs.Margin = new Padding(0, 0, 0, 6);
 
             TabPage p1 = new TabPage("时间与额度");
             BuildTimePage(p1);
@@ -66,262 +87,433 @@ namespace PCLock
             TabPage p4 = new TabPage("学习与体验");
             BuildLearnPage(p4);
             tabs.TabPages.Add(p4);
-            Controls.Add(tabs);
 
-            hint = L("", 15, 452);
+            root.Controls.Add(tabs, 0, 1);
+            root.SetColumnSpan(tabs, 2);
+
+            hint = new Label();
+            hint.Text = "";
             hint.ForeColor = Color.DimGray;
-            Controls.Add(hint);
+            hint.AutoSize = false;
+            hint.Dock = DockStyle.Fill;
+            hint.TextAlign = ContentAlignment.MiddleLeft;
+            hint.Margin = new Padding(0, 0, 0, 4);
+            root.Controls.Add(hint, 0, 2);
+            root.SetColumnSpan(hint, 2);
+
+            // 右对齐按钮条：不参与文字排版，改字号/换语言都不会压住提示行
+            FlowLayoutPanel bar = new FlowLayoutPanel();
+            bar.FlowDirection = FlowDirection.RightToLeft;
+            bar.WrapContents = false;
+            bar.AutoSize = true;
+            bar.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            bar.Anchor = AnchorStyles.Right;
+            bar.Margin = new Padding(0);
+            root.Controls.Add(bar, 0, 3);
+            root.SetColumnSpan(bar, 2);
 
             Button save = new Button();
             save.Text = "保存全部";
-            save.Location = new Point(330, 458);
             save.Size = new Size(100, 32);
+            save.Margin = new Padding(8, 0, 0, 0);
             save.Click += delegate { SaveAll(); };
-            Controls.Add(save);
 
             Button close = new Button();
             close.Text = "关闭";
-            close.Location = new Point(440, 458);
             close.Size = new Size(100, 32);
+            close.Margin = new Padding(0);
             close.Click += delegate { Close(); };
-            Controls.Add(close);
+
+            // RightToLeft 流式布局：先加的更靠右，因此「关闭」最后落位在右下角（与旧版一致）
+            bar.Controls.Add(close);
+            bar.Controls.Add(save);
 
             LoadValues(cbUser.Text);
             Program.Localize(this);
             Program.FlattenButtons(this);
         }
 
+        // ==================== 各选项卡 ====================
+
         void BuildTimePage(TabPage p)
         {
-            p.Controls.Add(L("每日总时长上限（分钟，0=关闭）", 15, 20));
-            txtDailyLimit = B(250, 18, 70); p.Controls.Add(txtDailyLimit);
-            p.Controls.Add(L("每日解锁次数上限（0=关闭）", 15, 55));
-            txtUnlockLimit = B(250, 53, 70); p.Controls.Add(txtUnlockLimit);
+            PageGrid g = new PageGrid(p);
 
-            p.Controls.Add(L("多规则时段（留空 = 沿用旧「每日可用时段」，旧安装行为不变）", 15, 92));
-            Label fmt = L("格式：1-5|17:00-21:00@quiz;6,7|08:00-22:00\n" +
+            txtDailyLimit = B(70);
+            g.Field("每日总时长上限（分钟，0=关闭）", txtDailyLimit);
+            txtUnlockLimit = B(70);
+            g.Field("每日解锁次数上限（0=关闭）", txtUnlockLimit);
+
+            g.Gap(4);
+            g.Text("多规则时段（留空 = 沿用旧「每日可用时段」，旧安装行为不变）", false);
+            g.Text("格式：1-5|17:00-21:00@quiz;6,7|08:00-22:00\n" +
                 "星期 1=周一..7=周日；@quiz = 仅时段内需要答题（时段外自由、不扣时长）；\n" +
-                "不带 @quiz = 仅时段内可用（时段外硬锁）；支持跨午夜 22:00-06:00。", 15, 115);
-            fmt.ForeColor = Color.DimGray;
-            p.Controls.Add(fmt);
-            txtRules = B(15, 165, 500, 90);
+                "不带 @quiz = 仅时段内可用（时段外硬锁）；支持跨午夜 22:00-06:00。", true);
+
+            txtRules = new TextBox();
             txtRules.Multiline = true;
             txtRules.ScrollBars = ScrollBars.Vertical;
-            p.Controls.Add(txtRules);
+            g.Full(txtRules, 92);
 
-            p.Controls.Add(L("护眼强制休息（分钟，0=关闭；时长用尽后休息，休息完仍需答题）", 15, 266));
-            txtRest = B(360, 264, 70); p.Controls.Add(txtRest);
-            p.Controls.Add(L("家长临时放行（分钟）", 15, 300));
-            txtTempPass = B(250, 298, 70); p.Controls.Add(txtTempPass);
+            Button grid = new Button();
+            grid.Text = "打开时段格子编辑器";
+            grid.Size = new Size(180, 30);
+            grid.Click += delegate
+            {
+                using (ScheduleGridForm f = new ScheduleGridForm())
+                    if (f.ShowDialog(this) == DialogResult.OK) txtRules.Text = f.RuleText;
+            };
+            g.Full(grid, 0);
+
+            g.Gap(4);
+            txtRest = B(70);
+            g.Field("护眼强制休息（分钟，0=关闭；时长用尽后休息，休息完仍需答题）", txtRest);
+            txtTempPass = B(70);
+            g.Field("家长临时放行（分钟）", txtTempPass);
 
             chkAntiTamper = new CheckBox();
             chkAntiTamper.Text = "检测系统时间大幅回拨并保护性锁定（可选加固，默认关）";
             chkAntiTamper.AutoSize = true;
-            chkAntiTamper.Location = new Point(15, 330);
-            p.Controls.Add(chkAntiTamper);
-
-            Button grid = new Button();
-            grid.Text = "打开时段格子编辑器";
-            grid.Location = new Point(250, 326);
-            grid.Size = new Size(180, 28);
-            grid.Click += delegate
-            {
-                using (ScheduleGridForm g = new ScheduleGridForm())
-                    if (g.ShowDialog(this) == DialogResult.OK) txtRules.Text = g.RuleText;
-            };
-            p.Controls.Add(grid);
+            g.Full(chkAntiTamper, 0);
         }
 
         void BuildQuizPage(TabPage p)
         {
-            p.AutoScroll = true;   // 星级钱包新增三项后页面变长，小屏可滚动
-            p.Controls.Add(L("每次锁屏题量（1-30，默认 10）", 15, 20));
-            txtQCount = B(250, 18, 70); p.Controls.Add(txtQCount);
-            p.Controls.Add(L("需答对题数（默认=题量，即全部答对；答错扣 1 星，最低 0 星）", 15, 55));
-            txtStreak = B(380, 53, 70); p.Controls.Add(txtStreak);
+            PageGrid g = new PageGrid(p);
+
+            txtQCount = B(70);
+            g.Field("每次锁屏题量（1-30，默认 10）", txtQCount);
+            txtStreak = B(70);
+            g.Field("需答对题数（默认=题量，即全部答对；答错扣 1 星，最低 0 星）", txtStreak);
 
             chkFeedback = new CheckBox();
             chkFeedback.Text = "答错显示正确答案与解析（不改变扣星与补题规则）";
             chkFeedback.AutoSize = true;
-            chkFeedback.Location = new Point(15, 90);
-            p.Controls.Add(chkFeedback);
+            g.Full(chkFeedback, 0);
 
-            p.Controls.Add(L("累计答错 N 题，增加 M 道加练题（0=关闭；跨天/重启保留）", 15, 128));
-            txtExtraThreshold = B(250, 158, 60); p.Controls.Add(txtExtraThreshold);
-            p.Controls.Add(L("N", 220, 160));
-            txtExtraPer = B(380, 158, 60); p.Controls.Add(txtExtraPer);
-            p.Controls.Add(L("M", 355, 160));
+            g.Gap(4);
+            g.Text("累计答错 N 题，增加 M 道加练题（0=关闭；跨天/重启保留）", false);
+            Label ln = PageGrid.MakeLabel("N");
+            ln.Margin = new Padding(4, 0, 4, 0);
+            Label lm = PageGrid.MakeLabel("M");
+            lm.Margin = new Padding(18, 0, 4, 0);
+            txtExtraThreshold = B(56);
+            txtExtraPer = B(56);
+            g.Row(ln, txtExtraThreshold, lm, txtExtraPer);
 
             chkStar = new CheckBox();
             chkStar.Text = "启用星级时长奖励（按题目年级/难度，1-5 星）";
             chkStar.AutoSize = true;
-            chkStar.Location = new Point(15, 200);
-            p.Controls.Add(chkStar);
-            p.Controls.Add(L("1-5 星每题奖励分钟数：", 15, 234));
+            g.Full(chkStar, 0);
+
+            g.Text("1-5 星每题奖励分钟数：", false);
+            Control[] cells = new Control[10];
             for (int i = 0; i < 5; i++)
             {
-                p.Controls.Add(L((i + 1) + "★", 165 + i * 72, 234));
-                txtStars[i] = B(165 + i * 72, 258, 50);
-                p.Controls.Add(txtStars[i]);
+                Label sl = PageGrid.MakeLabel((i + 1) + "★");
+                sl.Margin = new Padding(i == 0 ? 4 : 18, 2, 4, 2);
+                txtStars[i] = B(48);
+                cells[i * 2] = sl;
+                cells[i * 2 + 1] = txtStars[i];
             }
+            g.Row(cells);
 
             chkStarWallet = new CheckBox();
             chkStarWallet.Text = "孩子可自助兑换星星（开启后解锁不再自动折算）";
             chkStarWallet.AutoSize = true;
-            chkStarWallet.Location = new Point(15, 278);
-            p.Controls.Add(chkStarWallet);
-            p.Controls.Add(L("每星兑换秒数（默认 60，即 1 星 = 1 分钟）：", 15, 306));
-            txtStarSecPerStar = B(360, 304, 60); p.Controls.Add(txtStarSecPerStar);
-            p.Controls.Add(L("每日兑换上限（分钟，0=不限）：", 15, 334));
-            txtStarDailyMin = B(360, 332, 60); p.Controls.Add(txtStarDailyMin);
+            g.Full(chkStarWallet, 0);
+
+            txtStarSecPerStar = B(60);
+            g.Field("每星兑换秒数（默认 60，即 1 星 = 1 分钟）：", txtStarSecPerStar);
+            txtStarDailyMin = B(60);
+            g.Field("每日兑换上限（分钟，0=不限）：", txtStarDailyMin);
 
             chkPractice = new CheckBox();
             chkPractice.Text = "启用练习模式（锁屏/托盘可进入；不解锁、不暂停倒计时）";
             chkPractice.AutoSize = true;
-            chkPractice.Location = new Point(15, 372);
-            p.Controls.Add(chkPractice);
+            g.Full(chkPractice, 0);
         }
 
         void BuildBankPage(TabPage p)
         {
-            p.Controls.Add(L("题库以程序目录下 chinese.txt / english.txt 为准（UTF-8，| 分隔）。", 15, 20));
-            p.Controls.Add(L("JSON 用于批量备份/交换；导入会覆盖对应 txt，下次锁屏生效。", 15, 45));
+            PageGrid g = new PageGrid(p);
 
+            g.Text("题库以程序目录下 chinese.txt / english.txt 为准（UTF-8，| 分隔）。", false);
+            g.Text("JSON 用于批量备份/交换；导入会覆盖对应 txt，下次锁屏生效。", true);
+
+            g.Gap(6);
             Button bExport = new Button();
             bExport.Text = "导出内置题库 JSON";
-            bExport.Location = new Point(15, 85);
             bExport.Size = new Size(180, 34);
             bExport.Click += delegate { ExportBankJson(); };
-            p.Controls.Add(bExport);
 
             Button bZh = new Button();
             bZh.Text = "导入语文 JSON";
-            bZh.Location = new Point(210, 85);
             bZh.Size = new Size(150, 34);
             bZh.Click += delegate { ImportBankJson(true); };
-            p.Controls.Add(bZh);
 
             Button bEn = new Button();
             bEn.Text = "导入英语 JSON";
-            bEn.Location = new Point(370, 85);
             bEn.Size = new Size(150, 34);
             bEn.Click += delegate { ImportBankJson(false); };
-            p.Controls.Add(bEn);
+            g.Row(bExport, bZh, bEn);
 
             Button bCheck = new Button();
             bCheck.Text = "题库质量检查";
-            bCheck.Location = new Point(15, 140);
             bCheck.Size = new Size(180, 34);
             bCheck.Click += delegate { CheckBank(); };
-            p.Controls.Add(bCheck);
 
             Button bUsage = new Button();
             bUsage.Text = "查看 7 天使用记录";
-            bUsage.Location = new Point(210, 140);
             bUsage.Size = new Size(180, 34);
             bUsage.Click += delegate
             {
                 using (UsageForm f = new UsageForm()) f.ShowDialog(this);
             };
-            p.Controls.Add(bUsage);
+            g.Row(bCheck, bUsage);
 
             Button bExportCfg = new Button();
             bExportCfg.Text = "导出配置（换机）";
-            bExportCfg.Location = new Point(15, 195);
             bExportCfg.Size = new Size(160, 32);
             bExportCfg.Click += delegate { ExportConfigToFile(); };
-            p.Controls.Add(bExportCfg);
 
             Button bImportCfg = new Button();
             bImportCfg.Text = "导入配置";
-            bImportCfg.Location = new Point(190, 195);
             bImportCfg.Size = new Size(160, 32);
             bImportCfg.Click += delegate { ImportConfigFromFile(); };
-            p.Controls.Add(bImportCfg);
+            g.Row(bExportCfg, bImportCfg);
 
-            Label note = L("质量门禁：题量、选项 2-4 个且互不重复、正确答案下标、\n" +
-                "无占位符、题干去重、年级不超纲；导入前还会校验年级范围与重复词条。", 15, 240);
-            note.ForeColor = Color.DimGray;
-            p.Controls.Add(note);
+            g.Gap(6);
+            g.Text("质量门禁：题量、选项 2-4 个且互不重复、正确答案下标、\n" +
+                "无占位符、题干去重、年级不超纲；导入前还会校验年级范围与重复词条。", true);
         }
 
         void BuildLearnPage(TabPage p)
         {
-            p.Controls.Add(L("难度倾向（80/20 加权）", 15, 20));
+            PageGrid g = new PageGrid(p);
+
+            Label ld = PageGrid.MakeLabel("难度倾向（80/20 加权）");
+            ld.Margin = new Padding(4, 4, 6, 4);
             cbDifficulty = new ComboBox();
-            cbDifficulty.Location = new Point(150, 16);
             cbDifficulty.Size = new Size(120, 24);
             cbDifficulty.DropDownStyle = ComboBoxStyle.DropDownList;
             cbDifficulty.Items.AddRange(new object[] { "不限", "偏易", "中等", "偏难" });
-            p.Controls.Add(cbDifficulty);
-
-            p.Controls.Add(L("学期", 290, 20));
+            Label lt = PageGrid.MakeLabel("学期");
+            lt.Margin = new Padding(22, 4, 6, 4);
             cbTerm = new ComboBox();
-            cbTerm.Location = new Point(340, 16);
             cbTerm.Size = new Size(100, 24);
             cbTerm.DropDownStyle = ComboBoxStyle.DropDownList;
             cbTerm.Items.AddRange(new object[] { "全学年", "上册", "下册" });
-            p.Controls.Add(cbTerm);
+            g.Row(ld, cbDifficulty, lt, cbTerm);
 
-            p.Controls.Add(L("题库名过滤（空=全部）", 15, 58));
-            txtBank = B(160, 55, 150); p.Controls.Add(txtBank);
+            txtBank = B(150);
+            g.Field("题库名过滤（空=全部）", txtBank);
 
             chkMathChoice = new CheckBox();
             chkMathChoice.Text = "数学四选一";
-            chkMathChoice.AutoSize = true; chkMathChoice.Location = new Point(15, 90);
-            p.Controls.Add(chkMathChoice);
+            chkMathChoice.AutoSize = true;
             chkChineseWord = new CheckBox();
             chkChineseWord.Text = "看拼音选词语";
-            chkChineseWord.AutoSize = true; chkChineseWord.Location = new Point(160, 90);
-            p.Controls.Add(chkChineseWord);
+            chkChineseWord.AutoSize = true;
             chkTrueFalse = new CheckBox();
             chkTrueFalse.Text = "判断题";
-            chkTrueFalse.AutoSize = true; chkTrueFalse.Location = new Point(310, 90);
-            p.Controls.Add(chkTrueFalse);
+            chkTrueFalse.AutoSize = true;
+            chkChineseWord.Margin = new Padding(24, 3, 3, 3);
+            chkTrueFalse.Margin = new Padding(24, 3, 3, 3);
+            g.Row(chkMathChoice, chkChineseWord, chkTrueFalse);
 
             chkReview = new CheckBox();
             chkReview.Text = "间隔重复复习（错题到期优先，本地 review.json）";
-            chkReview.AutoSize = true; chkReview.Location = new Point(15, 125);
-            p.Controls.Add(chkReview);
+            chkReview.AutoSize = true;
+            g.Full(chkReview, 0);
             chkChildGrade = new CheckBox();
             chkChildGrade.Text = "允许孩子自选年级（仅影响下一批题）";
-            chkChildGrade.AutoSize = true; chkChildGrade.Location = new Point(15, 155);
-            p.Controls.Add(chkChildGrade);
+            chkChildGrade.AutoSize = true;
+            g.Full(chkChildGrade, 0);
 
-            p.Controls.Add(L("解析停留秒数（0=不强制）", 15, 190));
-            txtHold = B(170, 187, 60); p.Controls.Add(txtHold);
-            p.Controls.Add(L("鼓励语", 250, 190));
-            txtEncourage = B(310, 187, 180); p.Controls.Add(txtEncourage);
+            g.Gap(2);
+            Label lh = PageGrid.MakeLabel("解析停留秒数（0=不强制）");
+            lh.Margin = new Padding(4, 4, 6, 4);
+            txtHold = B(60);
+            Label le = PageGrid.MakeLabel("鼓励语");
+            le.Margin = new Padding(22, 4, 6, 4);
+            txtEncourage = B(190);
+            g.Row(lh, txtHold, le, txtEncourage);
 
-            p.Controls.Add(L("界面语言（新窗口生效）", 15, 225));
+            Label ll = PageGrid.MakeLabel("界面语言（新窗口生效）");
+            ll.Margin = new Padding(4, 4, 6, 4);
             cbLang = new ComboBox();
-            cbLang.Location = new Point(170, 222);
             cbLang.Size = new Size(120, 24);
             cbLang.DropDownStyle = ComboBoxStyle.DropDownList;
             cbLang.Items.AddRange(new object[] { "中文", "English" });
-            p.Controls.Add(cbLang);
+            g.Row(ll, cbLang);
 
-            p.Controls.Add(L("节假日日期（yyyy-MM-dd，逗号分隔，按周日规则）", 15, 260));
-            txtHolidays = B(15, 282, 490); p.Controls.Add(txtHolidays);
+            g.Gap(2);
+            g.Text("节假日日期（yyyy-MM-dd，逗号分隔，按周日规则）", false);
+            txtHolidays = B(520);
+            g.Full(txtHolidays, 0);
 
-            Label note = L("学期 / 题库名来自外部词库可选列；内置题库无学期标签时按全学年处理。", 15, 315);
-            note.ForeColor = Color.DimGray;
-            p.Controls.Add(note);
+            g.Text("学期 / 题库名来自外部词库可选列；内置题库无学期标签时按全学年处理。", true);
 
-            p.Controls.Add(L("日志保留天数（0=永久，全局）", 15, 345));
-            txtLogKeep = B(200, 342, 60); p.Controls.Add(txtLogKeep);
-            Label note2 = L("默认 90 天：启动时清理更早的 log\\*.log，删除失败静默。", 270, 345);
-            note2.ForeColor = Color.DimGray;
-            p.Controls.Add(note2);
+            txtLogKeep = B(60);
+            g.Field("日志保留天数（0=永久，全局）", txtLogKeep);
+            g.Text("默认 90 天：启动时清理更早的 log\\*.log，删除失败静默。", true);
 
             // 让家长看得见「现在能填哪些题库名」：banks\*.txt 的文件名即题库名
             string[] banks = BankSet.CollectBankNames(AppDomain.CurrentDomain.BaseDirectory);
-            Label note3 = L(banks.Length == 0
-                ? "多题库：把 chinese.txt / english.txt 拆成 banks\\<题库名>.txt，文件名即题库名。"
-                : "可用题库：" + string.Join("、", banks), 15, 372);
-            note3.ForeColor = Color.DimGray;
-            p.Controls.Add(note3);
+            string bankNote;
+            if (banks.Length == 0)
+            {
+                bankNote = "多题库：把 chinese.txt / english.txt 拆成 banks\\<题库名>.txt，文件名即题库名。";
+            }
+            else if (banks.Length <= 4)
+            {
+                bankNote = "可用题库：" + string.Join("、", banks);
+            }
+            else
+            {
+                // 题库很多时只列前 4 个，避免长句把窗口撑宽
+                string[] head = new string[4];
+                Array.Copy(banks, head, 4);
+                bankNote = "可用题库（共 " + banks.Length + " 个）：" +
+                    string.Join("、", head) + " 等";
+            }
+            g.Text(bankNote, true);
         }
+
+        // ==================== 页内布局工具 ====================
+
+        /// <summary>
+        /// 一页内容按「行」逐步堆叠：行高由内容决定，控件不会互相覆盖。
+        /// 三列 = 行标签 / 输入控件 / 余量，跨列控件占满整行。
+        /// 页面超出可视区时由 TabPage 自动出滚动条。
+        /// </summary>
+        sealed class PageGrid
+        {
+            readonly TableLayoutPanel panel;
+            readonly List<Label> wraps = new List<Label>();
+            readonly List<Label> rowLabels = new List<Label>();
+            readonly List<Control> rowFields = new List<Control>();
+            int row;
+
+            public PageGrid(TabPage page)
+            {
+                panel = new TableLayoutPanel();
+                panel.AutoSize = true;
+                panel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+                panel.Dock = DockStyle.Top;          // 宽度跟随页面，高度随行数增长
+                panel.Padding = new Padding(6, 8, 6, 8);
+                panel.ColumnCount = 3;
+                panel.RowCount = 0;
+                panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+                panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+                panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+                page.AutoScroll = true;              // 小屏 / 大字号下可滚动，不裁剪
+                page.Controls.Add(panel);
+                // 换行宽度必须跟随实际宽度：首次布局前 panel.Width 还是 0，
+                // 这里统一在布局事件里刷新，避免长说明被压成 200px 的窄柱
+                panel.Layout += delegate { SyncWrap(); };
+            }
+
+            void SyncWrap()
+            {
+                int inner = panel.ClientSize.Width - 12;   // 去掉左右 padding
+                int w = Math.Max(200, inner - 8);
+                for (int i = 0; i < wraps.Count; i++)
+                {
+                    if (wraps[i].MaximumSize.Width != w)
+                        wraps[i].MaximumSize = new Size(w, 0);
+                }
+                // 行标签：英文/更长的译文下折行，而不是把输入框挤出页面右侧
+                for (int i = 0; i < rowLabels.Count; i++)
+                {
+                    int cap = Math.Max(140, inner - rowFields[i].Width - 26);
+                    if (rowLabels[i].MaximumSize.Width != cap)
+                        rowLabels[i].MaximumSize = new Size(cap, 0);
+                }
+            }
+
+            public static Label MakeLabel(string text)
+            {
+                Label l = new Label();
+                l.Text = text;
+                l.AutoSize = true;
+                l.Anchor = AnchorStyles.Left;
+                l.Margin = new Padding(4, 6, 10, 4);
+                return l;
+            }
+
+            int NextRow(SizeType type, int height)
+            {
+                int r = row;
+                row++;
+                panel.RowCount = row;
+                panel.RowStyles.Add(new RowStyle(type, height));
+                return r;
+            }
+
+            /// <summary>标签 + 控件同行：控件紧贴标签文字右缘，标签变长只会折行，不会压住控件</summary>
+            public void Field(string text, Control field)
+            {
+                int r = NextRow(SizeType.AutoSize, 0);
+                Label l = MakeLabel(text);
+                l.MaximumSize = new Size(Math.Max(140, panel.Width - field.Width - 38), 0);
+                rowLabels.Add(l);
+                rowFields.Add(field);
+                panel.Controls.Add(l, 0, r);
+                field.Anchor = AnchorStyles.Left;
+                field.Margin = new Padding(0, 4, 4, 4);
+                panel.Controls.Add(field, 1, r);
+            }
+
+            /// <summary>整行文字（跨列）：dim=true 用灰色说明色，自动换行</summary>
+            public void Text(string text, bool dim)
+            {
+                int r = NextRow(SizeType.AutoSize, 0);
+                Label l = MakeLabel(text);
+                if (dim) l.ForeColor = Color.DimGray;
+                l.MaximumSize = new Size(Math.Max(200, panel.Width - 20), 0);
+                l.Margin = new Padding(4, dim ? 2 : 8, 4, 2);
+                wraps.Add(l);
+                panel.Controls.Add(l, 0, r);
+                panel.SetColumnSpan(l, 3);
+            }
+
+            /// <summary>整行控件（跨列）。height &gt; 0 时固定行高并铺满宽度（多行输入框）</summary>
+            public void Full(Control c, int height)
+            {
+                int r = NextRow(height > 0 ? SizeType.Absolute : SizeType.AutoSize, height);
+                c.Margin = new Padding(4, 4, 4, 4);
+                if (height > 0) c.Dock = DockStyle.Fill;
+                else c.Anchor = AnchorStyles.Left;
+                panel.Controls.Add(c, 0, r);
+                panel.SetColumnSpan(c, 3);
+            }
+
+            /// <summary>整行横向排列的一组控件（按钮组 / 复选框组）</summary>
+            public void Row(params Control[] items)
+            {
+                int r = NextRow(SizeType.AutoSize, 0);
+                FlowLayoutPanel f = new FlowLayoutPanel();
+                f.AutoSize = true;
+                f.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+                f.WrapContents = false;
+                f.Anchor = AnchorStyles.Left;
+                f.Margin = new Padding(2, 4, 2, 4);
+                for (int i = 0; i < items.Length; i++)
+                {
+                    if (items[i] is Button) items[i].Margin = new Padding(i == 0 ? 0 : 10, 0, 0, 0);
+                    f.Controls.Add(items[i]);
+                }
+                panel.Controls.Add(f, 0, r);
+                panel.SetColumnSpan(f, 3);
+            }
+
+            /// <summary>纵向留白</summary>
+            public void Gap(int h) { NextRow(SizeType.Absolute, h); }
+        }
+
+        // ==================== 逻辑（未改动） ====================
 
         void ExportConfigToFile()
         {
@@ -536,20 +728,10 @@ namespace PCLock
                 err == null && cap == "通过" ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
         }
 
-        static Label L(string text, int x, int y)
-        {
-            Label l = new Label();
-            l.Text = text;
-            l.AutoSize = true;
-            l.Location = new Point(x, y);
-            return l;
-        }
-
-        static TextBox B(int x, int y, int w) { return B(x, y, w, 24); }
-        static TextBox B(int x, int y, int w, int h)
+        static TextBox B(int w) { return B(w, 24); }
+        static TextBox B(int w, int h)
         {
             TextBox t = new TextBox();
-            t.Location = new Point(x, y);
             t.Size = new Size(w, h);
             return t;
         }
