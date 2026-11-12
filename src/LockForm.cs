@@ -129,11 +129,7 @@ namespace PCLock
                 else if (questions != null && questions.Count > 0) UpdateStatus();
 
                 // 家长 PIN 面板的运行期提示原先要等下一次操作才更新语言，这里即时重算
-                if (pinCooldown > 0)
-                    pinLabel.Text = Strings.Fmt("PIN 错误次数过多，请 {0} 秒后再试", pinCooldown);
-                else if (pinFailLeft > 0)
-                    pinLabel.Text = Strings.Fmt("PIN 错误（还可尝试 {0} 次）", pinFailLeft);
-                else pinLabel.Text = Strings.Get("家长 PIN：");
+                pinLabel.Text = UiText.PinLabel(pinCooldown, pinFailLeft);
             };
             Program.RegisterDynamicRefresh(langRefresh);
         }
@@ -180,10 +176,10 @@ namespace PCLock
             parentBtn.Click += delegate
             {
                 parentPanel.Visible = true;
+                parentPanel.BringToFront();   // 每次打开都确认在最上层，防被题干/反馈层盖住
                 // 重开面板时清掉上次的错误提示；冷却中则继续显示冷却文案
-                if (pinCooldown > 0)
-                    pinLabel.Text = Strings.Fmt("PIN 错误次数过多，请 {0} 秒后再试", pinCooldown);
-                else { pinFailLeft = 0; pinLabel.Text = Strings.Get("家长 PIN："); }
+                if (pinCooldown <= 0) pinFailLeft = 0;
+                pinLabel.Text = UiText.PinLabel(pinCooldown, pinFailLeft);
                 pinBox.Focus();
             };
 
@@ -365,6 +361,15 @@ namespace PCLock
             Controls.Add(parentBtn);
             Controls.Add(settingsBtn);
             Controls.Add(parentPanel);
+
+            // WinForms 中先 Add 的控件在 z-order 上层、后 Add 的在底层。
+            // parentPanel 最后加入，会被题干 questionLabel 盖住 —— 点「家长入口」后
+            // PIN 输入框看不见也点不到。交互层统一提到最前。
+            parentPanel.BringToFront();
+            parentBtn.BringToFront();
+            settingsBtn.BringToFront();
+            practiceBtn.BringToFront();
+            gradeBox.BringToFront();
         }
 
         void ApplyDueToWindowUI()
@@ -373,11 +378,8 @@ namespace PCLock
             {
                 // hardReason 是 App 运行期传入的中文短语（额度/休息/时间异常）。
                 // 必须过词典，否则英文模式下标题漏译；字段本身保留中文，IndexOf("休息") 判断不受影响。
-                titleLabel.Text = Strings.Get(hardReason);
-                string rules = Store.GetRules(user);
-                questionLabel.Text = string.IsNullOrWhiteSpace(rules)
-                    ? Strings.Get("请使用家长 PIN 解锁")
-                    : (Strings.Get("当前规则：") + "\n" + rules);
+                titleLabel.Text = UiText.HardLockTitle(hardReason);
+                questionLabel.Text = UiText.HardLockQuestion(Store.GetRules(user));
                 statusLabel.Text = Strings.Get("休息结束后自动解锁，或由家长输入 PIN / 临时放行。");
                 restActive = hardReason.IndexOf("休息") >= 0;
                 restLabel.Visible = restActive;
@@ -386,8 +388,7 @@ namespace PCLock
             {
                 titleLabel.Text = "当前不在使用时段";
                 string w = Store.GetWindow(user);
-                questionLabel.Text = string.IsNullOrWhiteSpace(w)
-                    ? "当前不在允许使用时段" : (Strings.Get("允许使用时段：") + "\n" + w);
+                questionLabel.Text = UiText.WindowQuestion(w);
                 statusLabel.Text = WindowStatusText();
             }
             answerBox.Visible = false;
@@ -402,8 +403,7 @@ namespace PCLock
             string spec = Store.GetRules(user);
             if (string.IsNullOrWhiteSpace(spec)) spec = Store.GetWindow(user);
             int mins = NextWindow.MinutesUntil(WindowRules.Parse(spec), DateTime.Now);
-            string s = Strings.Get("时段开始后自动解锁，或由家长输入 PIN 解锁。");
-            return mins > 0 ? s + Strings.Fmt("　距下次可用还有 {0}", NextWindow.Format(mins)) : s;
+            return UiText.WindowStatus(mins > 0 ? NextWindow.Format(mins) : "");
         }
 
         static Label MakeLabel(string text, float size, FontStyle style, Color color)
@@ -731,7 +731,7 @@ namespace PCLock
                         {
                             pinOkBtn.Enabled = true;
                             pinFailLeft = Constants.PinMaxFails - pinFails;
-                            pinLabel.Text = Strings.Fmt("PIN 错误（还可尝试 {0} 次）", pinFailLeft);
+                            pinLabel.Text = UiText.PinLabel(0, pinFailLeft);
                             AuditLog.Write("密码验证失败：锁屏家长入口（还可尝试 " + (Constants.PinMaxFails - pinFails) + " 次）");
                         }
                     });
@@ -791,12 +791,8 @@ namespace PCLock
                             pinBox.Enabled = true;
                             pinOkBtn.Enabled = true;
                             pinFailLeft = 0;
-                            pinLabel.Text = Strings.Get("家长 PIN：");
                         }
-                        else
-                        {
-                            pinLabel.Text = Strings.Fmt("PIN 错误次数过多，请 {0} 秒后再试", pinCooldown);
-                        }
+                        pinLabel.Text = UiText.PinLabel(pinCooldown, pinFailLeft);
                     }
                 }
             }

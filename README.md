@@ -32,7 +32,7 @@
 `build.bat` 优先调用 **.NET Framework 4.x** 自带的编译器，产物 `PCLock.exe` 面向 .NET 4.0 运行时，在装有 .NET 4.0+ 的 Win7 上即可运行（如系统未带 4.x，请先安装 .NET Framework 4.x）。
 产物目录同时包含 `PCLock.exe.config`（声明支持的运行时），须与 `PCLock.exe` 放在同一目录。
 构建前会自动生成 `src\_Version.cs`：**版本号每次构建自动取自 git tag**（去掉 `v` 前缀；GitHub tag 构建用 `GITHUB_REF_NAME`，本地取 HEAD 上的 tag，否则取版本最高的 tag；无 tag / 无 git 回退 `1.0.0`），Commit 取 git 短哈希。脚本为 `gen_version.bat`，`build.bat` 与 VS（`PCLock.csproj` 的 `BeforeBuild`）共用，无需手工改版本号。
-单元测试：双击 `tests\run.bat`（同样基于系统自带 `csc`，零依赖），覆盖时段解析、题库组合与题库边界、PIN 哈希、数学答案一致性、断电折算、日志保留与统计键清理、错题库混入去重、多题库文件解析、多语言词典、选项按钮 Tag 解析、诊断报告脱敏、语言事件、答题反馈流程（156 项）。
+单元测试：双击 `tests\run.bat`（同样基于系统自带 `csc`，零依赖），覆盖时段解析、题库组合与题库边界、PIN 哈希、数学答案一致性、断电折算、日志保留与统计键清理、错题库混入去重、多题库文件解析、多语言词典、选项按钮 Tag 解析、诊断报告脱敏、语言事件、答题反馈流程、锁屏动态文案（166 项）。
 
 ## 安装（只需一次）
 
@@ -45,7 +45,7 @@
 
 > **升级到新版本**：不需要卸载，推荐用 `tools\upgrade.bat`（自动备份 + 校验 + 只替换 exe/config/图标 + 失败回滚）。
 > 也可手动：退出程序 → 替换 `PCLock.exe` / `PCLock.exe.config` → 重新以管理员运行。
-> 版本可从「关于」窗口或右键 exe → 属性 → 详细信息（文件版本 `1.6.8.0`）确认；发布包附 `SHA256SUMS.txt` 供校验。
+> 版本可从「关于」窗口或右键 exe → 属性 → 详细信息（文件版本 `1.6.9.0`）确认；发布包附 `SHA256SUMS.txt` 供校验。
 > 完整步骤、备份清单、回滚与常见问题见 [`docs/升级指南.md`](docs/升级指南.md)。
 
 ## 日常使用（家长）
@@ -627,14 +627,14 @@ LaTeX/手写/语音输入、TV 遥控器虚拟键盘、大人/儿童开机双选
 
 ```bat
 tests\gate.bat        :: 一键门禁：单测 + Release + Debug + 清单检查
-tests\run.bat         :: 单测（156 项，含负向变异回归）
+tests\run.bat         :: 单测（166 项，含负向变异回归）
 build.bat Release     :: 产物 bin\Release\PCLock.exe（请核对时间戳）
 ```
 
 > **CI 触发约定（2026-11-12 收紧）**：GitHub 上**只有 push `v*` tag 才会自动运行任何工作流**
 > （`release.yml`：编译 + 产物时间戳校验 + 打包发布，且 job 额外加了 tag 守卫）；
 > 普通 push、PR 一律零运行；`tests.yml` 只剩 `workflow_dispatch` 手动入口，且只跑单测、不编译 exe。
-> 本地全量门禁仍是 `tests\gate.bat`（156 项单测 + Release/Debug 编译 + 8 道守卫）。
+> 本地全量门禁仍是 `tests\gate.bat`（166 项单测 + Release/Debug 编译 + 10 步门禁）。
 >
 > **关于「仓库设置」**：GitHub 的 Settings → Actions 页面**没有**「仅 tag 编译」开关，
 > 触发开关在 `.github/workflows/*.yml` 的 `on`（已按上面配好）。可选的仓库级加固（需管理员在网页手动设）：
@@ -645,7 +645,7 @@ build.bat Release     :: 产物 bin\Release\PCLock.exe（请核对时间戳）
 > （`v1.6.0` → `1.6.0`），CI tag 构建用 `GITHUB_REF_NAME` 优先，本地用 `git tag`，
 > 无 tag 回退 `1.0.0`。`build.bat` 与 VS 共用同一脚本，打完 tag 后构建即自动对齐，无需改代码。
 
-> 测试规模由 53 项增至 **156 项**；上文历史更新日志中的「53 项」「85 项」「99 项」为当时口径。
+> 测试规模由 53 项增至 **166 项**；上文历史更新日志中的「53 项」「85 项」「99 项」为当时口径。
 > 新增 GUI 行为（首次密码、高级规则、练习、休息、使用记录）需按
 > `docs/回归验证清单.md` B17–B34 在管理员真机逐项验证，代理环境无法完成。
 
@@ -734,9 +734,20 @@ build.bat Release     :: 产物 bin\Release\PCLock.exe（请核对时间戳）
 | 防复发 | `tests\gate.bat` 扩到 **8 步**，新增守卫：`OnWrong` 方法体内不得出现 `StartBatch()`、手动继续委托必须重建批次、纯函数与硬锁译文接线必须存在；已用注入样例验证「违规 → RC=1 并报出原因，还原 → RC=0」 |
 | 验证 | 单测 146 → **156 项**（`tests/Batch8Tests.cs` 10 项：状态行四态、输入拦截负向变异、即时翻译、硬锁 / PIN 词条、解析重算、空值守卫）；门禁 8/8 全绿 |
 
+### 2026-11-12 - 第十批（A 批：家长 PIN 面板层级修复 + 文档/向导收敛，单测 156 → 166）
+
+| 类别 | 内容 |
+|---|---|
+| 线上缺陷 | 锁屏点右下「家长入口」后，PIN 面板被题干盖住、看不见也点不到。根因：`AddCoreControls()` 把 `parentPanel` **最后**加入控件集合，WinForms 中后加入的处于 z-order 底层，被先加入的 `questionLabel` 覆盖。修法：构造末尾把 `parentPanel` / 入口按钮 `BringToFront()`，每次打开面板再确认一次 |
+| 动态文案可测化 | 新增 `src/UiText.cs`：硬锁标题/规则、时段说明与状态行、PIN 面板三态提示抽成纯函数；`LockForm` 的 `ApplyDueToWindowUI` / `WindowStatusText` / `langRefresh` / PIN 冷却全部改为调用它，切语言时统一重算 |
+| 回归向导 | `tests/manual_regression.ps1` 重写：按内容定位中文清单（修掉 ASCII-only 脚本硬编码中文路径在 PS 5.1 会乱码的隐患）、`-ListBatches` 分组、`-Mode failed` 只跑上次非 P 项、`-Mode batch -Batch B4` 按前缀筛选、`-DryRun` 预览、本轮失败清单导出 `docs\manual-regression-failures.txt` 与 P/F/S 摘要 |
+| 文档收敛 | 统一到 **166 项单测 / 10 步门禁 / B1–B43**；回归清单 B33/B34 归位；新增 B43（PIN 面板层级） |
+| 防复发 | `tests\gate.bat` 9 → **10 步**，新增守卫检查 `parentPanel.BringToFront()` 与 `UiText` 三处接线 |
+| 验证 | 单测 156 → **166 项**（`tests/Batch9Tests.cs` 10 项）；向导四条路径实测（42 项全跑 / 分组 / 前缀筛选 / 失败项筛选 40 项）；门禁 10/10 全绿 |
+
 ### 未做 / 需外部资源
 
-- 真机 B1–B42 回归、标准用户 DACL、VS/MSBuild 实跑：代理环境做不了，脚本与清单已交付。
+- 真机 B1–B43 回归、标准用户 DACL、VS/MSBuild 实跑：代理环境做不了，脚本与清单已交付。
 - 代码签名：需商业/EV 证书；`sign.bat` 已支持 `PCLOCK_EXPECTED_CERT_SHA256`。
 - 安装包编译：需本机 Inno Setup 6（`ISCC.exe installer\PCLock.iss`）。
 - 分层架构 L0–L3 实际迁移：长期项，前置条件是真机回归全绿，方案已写好但**未执行**。

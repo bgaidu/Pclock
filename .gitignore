@@ -31,5 +31,6 @@ review.json.bak
 review-*.json
 banks/
 docs/manual-regression-results.csv
+docs/manual-regression-failures.txt
 tests/_tests.exe
 installer/output/
