@@ -251,6 +251,15 @@ namespace PCLock
             if (minutes <= 0) return 0;
             return nowUtcTicks + (long)minutes * 60 * TimeSpan.TicksPerSecond;
         }
+
+        /// <summary>
+        /// 硬锁原因是否属于「护眼休息」。休息结束不是放行：必须转成答题锁屏，
+        /// 否则孩子只要等满休息时间就能免答题拿到新一轮时长。
+        /// </summary>
+        public static bool IsRestReason(string reason)
+        {
+            return !string.IsNullOrEmpty(reason) && reason.IndexOf("休息") >= 0;
+        }
     }
 
     // ===== 时间回拨主动检测（P1-12，默认关闭）=====

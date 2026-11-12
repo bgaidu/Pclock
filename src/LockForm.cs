@@ -376,8 +376,8 @@ namespace PCLock
                 // 必须过词典，否则英文模式下标题漏译；字段本身保留中文，IndexOf("休息") 判断不受影响。
                 titleLabel.Text = UiText.HardLockTitle(hardReason);
                 questionLabel.Text = UiText.HardLockQuestion(Store.GetRules(user));
-                statusLabel.Text = Strings.Get("休息结束后自动解锁，或由家长输入 PIN / 临时放行。");
-                restActive = hardReason.IndexOf("休息") >= 0;
+                statusLabel.Text = Strings.Get("休息结束后需答题解锁，或由家长输入 PIN / 临时放行。");
+                restActive = RestCooldown.IsRestReason(hardReason);
                 restLabel.Visible = restActive;
             }
             else
@@ -876,24 +876,26 @@ namespace PCLock
             {
                 int left = RestCooldown.RemainingSeconds(Store.GetRestUntilUtc(), DateTime.UtcNow.Ticks);
                 restLabel.Text = left > 0
-                    ? "还需休息 " + (left / 60) + " 分 " + (left % 60) + " 秒"
-                    : "休息结束，正在解锁…";
+                    ? Strings.Fmt("还需休息 {0} 分 {1} 秒", left / 60, left % 60)
+                    : Strings.Get("休息结束，正在进入答题…");
                 restLabel.Left = ClientSize.Width / 2 - restLabel.Width / 2;
             }
 
-            // 硬锁自动解锁：普通时段锁 → 进入允许时段；护眼休息 → 截止时间到；
+            // 硬锁自动解锁：普通时段锁 → 进入允许时段；护眼休息 → 转答题锁屏（不放行）；
             // 额度用尽 / 时间异常 → 不自动解锁，必须家长 PIN（避免靠等待绕过）。
             if (dueToWindow && !autoUnlocked && App.Instance != null)
             {
                 bool canAuto = false;
                 string reason = "进入可用时段自动解锁";
+                bool restOver = false;
                 if (!string.IsNullOrEmpty(hardReason))
                 {
-                    if (hardReason.IndexOf("休息") >= 0 &&
+                    if (RestCooldown.IsRestReason(hardReason) &&
                         !RestCooldown.IsResting(Store.GetRestUntilUtc(), DateTime.UtcNow.Ticks))
                     {
                         canAuto = true;
-                        reason = "护眼休息结束自动解锁";
+                        restOver = true;
+                        reason = "护眼休息结束";
                     }
                 }
                 else
@@ -904,6 +906,13 @@ namespace PCLock
                 if (canAuto)
                 {
                     autoUnlocked = true;
+                    // 护眼休息只解决「该休息」，不解决「该答题」：休息结束一律转到答题锁屏，
+                    // 答对够星数才进入新一轮。否则等满休息时间就能免答题拿到整轮时长。
+                    if (restOver)
+                    {
+                        App.Instance.SwitchToQuizLock();
+                        return;
+                    }
                     UnlockReason = reason;
                     if (UnlockRequested != null) UnlockRequested(this, EventArgs.Empty);
                 }

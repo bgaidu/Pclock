@@ -109,7 +109,7 @@ namespace PCLock
             txtRules.ScrollBars = ScrollBars.Vertical;
             p.Controls.Add(txtRules);
 
-            p.Controls.Add(L("护眼强制休息（分钟，0=关闭；时长用尽后进入）", 15, 266));
+            p.Controls.Add(L("护眼强制休息（分钟，0=关闭；时长用尽后休息，休息完仍需答题）", 15, 266));
             txtRest = B(360, 264, 70); p.Controls.Add(txtRest);
             p.Controls.Add(L("家长临时放行（分钟）", 15, 300));
             txtTempPass = B(250, 298, 70); p.Controls.Add(txtTempPass);

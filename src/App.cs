@@ -292,6 +292,24 @@ namespace PCLock
             lf.Activate();
         }
 
+        /// <summary>
+        /// 护眼休息结束：不直接放行，改为进入答题锁屏（答对够星数才进入新一轮）。
+        /// 由 LockForm.UiTick 在判定休息截止时调用。锁屏期间 OnTick 本就停摆，
+        /// 这里先清掉 RestUntilUtc，避免紧接着的 OnTick 又判成「休息中」再进休息。
+        /// </summary>
+        public void SwitchToQuizLock()
+        {
+            if (lockForm != null)
+            {
+                lockForm.AllowClose = true;
+                lockForm.Dispose();
+                lockForm = null;
+            }
+            Store.ClearRest();
+            AuditLog.Write("护眼休息结束：转入答题锁屏（不直接放行）");
+            LockNow(false);
+        }
+
         /// <summary>当前登录用户（供锁屏界面判断时段）</summary>
         public string CurrentUser { get { return currentUser; } }
 

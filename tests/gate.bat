@@ -57,6 +57,8 @@ if not exist "tests\Batch7Tests.cs" ( echo [FAIL] tests\Batch7Tests.cs missing &
 if not exist "tests\Batch8Tests.cs" ( echo [FAIL] tests\Batch8Tests.cs missing & exit /b 1 )
 if not exist "src\UiText.cs"        ( echo [FAIL] src\UiText.cs missing & exit /b 1 )
 if not exist "tests\Batch9Tests.cs" ( echo [FAIL] tests\Batch9Tests.cs missing & exit /b 1 )
+if not exist "tests\Batch10Tests.cs" ( echo [FAIL] tests\Batch10Tests.cs missing & exit /b 1 )
+if not exist "tests\Batch11Tests.cs" ( echo [FAIL] tests\Batch11Tests.cs missing & exit /b 1 )
 if not exist "tools\upgrade.ps1"    ( echo [FAIL] tools\upgrade.ps1 missing & exit /b 1 )
 if not exist "tools\upgrade.bat"    ( echo [FAIL] tools\upgrade.bat missing & exit /b 1 )
 rem Embedded file version must be present, otherwise Explorer cannot show it
@@ -83,7 +85,7 @@ echo [OK] no Control.Visible conditions
 echo === 6/10 Reliability batch wiring ===
 rem Refuse to ship if the offline upgrade helper, diagnostics entry, checksum
 rem asset or the pure UI renderer is silently bypassed / dropped.
-powershell -NoProfile -Command "$rel = Get-Content '.github\workflows\release.yml' -Raw; $lf = Get-Content 'src\LockForm.cs' -Raw; $pf = Get-Content 'src\PracticeForm.cs' -Raw; $tr = Get-Content 'src\App.Tray.cs' -Raw; $pc = Get-Content 'src\Policy.cs' -Raw; if ($rel -notmatch 'SHA256SUMS.txt') { Write-Host '  checksum asset missing'; exit 1 }; if ($lf -notmatch 'QuestionView.Build') { Write-Host '  LockForm bypasses QuestionView'; exit 1 }; if ($pf -notmatch 'QuestionView.Build') { Write-Host '  PracticeForm bypasses QuestionView'; exit 1 }; if ($tr -notmatch 'ExportDiagnostics') { Write-Host '  diagnostics entry missing'; exit 1 }; if ($tr -notmatch 'StarRedeemForm') { Write-Host '  star redeem entry missing'; exit 1 }; if ($lf -notmatch 'AddStarBalance') { Write-Host '  star wallet not wired into quiz'; exit 1 }; if ($pc -notmatch 'class StarWallet') { Write-Host '  StarWallet missing'; exit 1 }"
+powershell -NoProfile -Command "$rel = Get-Content '.github\workflows\release.yml' -Raw; $lf = Get-Content 'src\LockForm.cs' -Raw; $pf = Get-Content 'src\PracticeForm.cs' -Raw; $tr = Get-Content 'src\App.Tray.cs' -Raw; $pc = Get-Content 'src\Policy.cs' -Raw; $ap = Get-Content 'src\App.cs' -Raw; if ($rel -notmatch 'SHA256SUMS.txt') { Write-Host '  checksum asset missing'; exit 1 }; if ($lf -notmatch 'QuestionView.Build') { Write-Host '  LockForm bypasses QuestionView'; exit 1 }; if ($pf -notmatch 'QuestionView.Build') { Write-Host '  PracticeForm bypasses QuestionView'; exit 1 }; if ($tr -notmatch 'ExportDiagnostics') { Write-Host '  diagnostics entry missing'; exit 1 }; if ($tr -notmatch 'StarRedeemForm') { Write-Host '  star redeem entry missing'; exit 1 }; if ($lf -notmatch 'AddStarBalance') { Write-Host '  star wallet not wired into quiz'; exit 1 }; if ($pc -notmatch 'class StarWallet') { Write-Host '  StarWallet missing'; exit 1 }; if ($pc -notmatch 'IsRestReason') { Write-Host '  rest reason helper missing'; exit 1 }; if ($lf -notmatch 'IsRestReason') { Write-Host '  LockForm does not classify rest lock'; exit 1 }; if ($lf -notmatch 'SwitchToQuizLock') { Write-Host '  rest end does not fall through to the quiz'; exit 1 }; if ($ap -notmatch 'public void SwitchToQuizLock') { Write-Host '  SwitchToQuizLock missing in App'; exit 1 }"
 if errorlevel 1 (
   echo [FAIL] reliability wiring missing
   exit /b 1
