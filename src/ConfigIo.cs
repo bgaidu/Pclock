@@ -145,7 +145,7 @@ namespace PCLock
             return string.Join(";", segs.ToArray());
         }
 
-        /// <summary>err.txt 文本 → 异常类型计数摘要（本地聚合，不上传）</summary>
+        /// <summary>错误日志文本 → 异常类型计数摘要（本地聚合，不上传）</summary>
         public static string[] CrashSummary(string text)
         {
             string[] kinds = new string[] { "UI THREAD EXCEPTION", "UNHANDLED EXCEPTION",

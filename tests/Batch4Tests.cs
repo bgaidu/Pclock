@@ -49,6 +49,20 @@ public class Batch4Tests
         Assert.IsFalse(Housekeeping.TryParseLogDay("", out d));
     }
 
+    [Test]
+    public void ParseLogDayAcceptsTypePrefixedNames()
+    {
+        DateTime d;
+        Assert.IsTrue(Housekeeping.TryParseLogDay("audit-2026-11-12.log", out d), "审计日志前缀");
+        Assert.AreEqual(new DateTime(2026, 11, 12), d);
+        Assert.IsTrue(Housekeeping.TryParseLogDay("error-2026-11-12.log", out d), "错误日志前缀");
+        Assert.AreEqual(new DateTime(2026, 11, 12), d);
+        Assert.IsTrue(Housekeeping.TryParseLogDay("watchdog-crash-2026-11-12.log", out d), "看门狗崩溃日志前缀");
+        Assert.AreEqual(new DateTime(2026, 11, 12), d);
+        Assert.IsFalse(Housekeeping.TryParseLogDay("readme.log", out d), "无日期仍忽略");
+        Assert.IsFalse(Housekeeping.TryParseLogDay("audit-2026-11-12.txt", out d), "非 .log 仍忽略");
+    }
+
     // ===== 统计键上限 =====
 
     [Test]

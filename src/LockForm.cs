@@ -648,7 +648,17 @@ namespace PCLock
             UnlockReason = "答题达标（答对 " + correctCount + " 道）";
             int reward = 0;
             if (Store.IsStarRewardEnabled(user))
-                reward = StarReward.RewardSeconds(correctQuestions, Store.GetStarRewards(user));
+            {
+                if (Store.IsStarWalletEnabled(user))
+                {
+                    // 钱包模式：星星存进余额，由孩子在托盘自助兑换（不再解锁自动折算）
+                    Store.AddStarBalance(user, StarReward.TotalStars(correctQuestions));
+                }
+                else
+                {
+                    reward = StarReward.RewardSeconds(correctQuestions, Store.GetStarRewards(user));
+                }
+            }
             Store.SetPendingReward(reward);
             if (UnlockRequested != null) UnlockRequested(this, EventArgs.Empty);
         }

@@ -292,6 +292,84 @@ namespace PCLock
             }
             return (int)total;
         }
+
+        /// <summary>钱包模式：本轮答对题累计多少星（不做分钟折算）</summary>
+        public static int TotalStars(List<Question> correctQuestions)
+        {
+            if (correctQuestions == null) return 0;
+            int total = 0;
+            foreach (Question q in correctQuestions) total += StarOf(q);
+            return total;
+        }
+    }
+
+    /// <summary>
+    /// 星星钱包纯逻辑（家长自定义汇率、每日兑换上限；余额不设上限）。
+    /// 兑换秒数 = 星数 × 每星秒数，且同时受「当日剩余额度」钳制。
+    /// </summary>
+    public static class StarWallet
+    {
+        public const int DefaultSecondsPerStar = 60;
+        public const int MinSecondsPerStar = 10;
+        public const int MaxSecondsPerStar = 3600;
+        public const int DefaultDailyLimitMinutes = 30;
+
+        /// <summary>汇率钳制：非法值（&lt;10 秒）回退默认 60 秒/星，避免写成 0 后兑换变空</summary>
+        public static int ClampSecondsPerStar(int secondsPerStar)
+        {
+            if (secondsPerStar < MinSecondsPerStar) return DefaultSecondsPerStar;
+            if (secondsPerStar > MaxSecondsPerStar) return MaxSecondsPerStar;
+            return secondsPerStar;
+        }
+
+        /// <summary>每日上限钳制：0 = 不限；上限最多 600 分钟</summary>
+        public static int ClampDailyLimitMinutes(int minutes)
+        {
+            if (minutes < 0) return 0;
+            if (minutes > 600) return 600;
+            return minutes;
+        }
+
+        /// <summary>N 星按汇率能换多少秒（不校验余额与额度）</summary>
+        public static int SecondsFor(int stars, int secondsPerStar)
+        {
+            if (stars <= 0) return 0;
+            long total = (long)stars * ClampSecondsPerStar(secondsPerStar);
+            if (total > int.MaxValue) return int.MaxValue;
+            return (int)total;
+        }
+
+        /// <summary>当日剩余可兑秒数；上限 0 表示不限（返回 int.MaxValue）</summary>
+        public static int RemainingDailySeconds(int usedSeconds, int dailyLimitMinutes)
+        {
+            int minutes = ClampDailyLimitMinutes(dailyLimitMinutes);
+            if (minutes <= 0) return int.MaxValue;
+            long limit = (long)minutes * 60;
+            long used = usedSeconds < 0 ? 0 : usedSeconds;
+            long left = limit - used;
+            if (left <= 0) return 0;
+            return left > int.MaxValue ? int.MaxValue : (int)left;
+        }
+
+        /// <summary>实际可兑秒数：min(余额 × 汇率, 当日剩余额度)</summary>
+        public static int RedeemableSeconds(int balanceStars, int secondsPerStar, int usedSeconds, int dailyLimitMinutes)
+        {
+            if (balanceStars <= 0) return 0;
+            int byStars = SecondsFor(balanceStars, secondsPerStar);
+            int byDay = RemainingDailySeconds(usedSeconds, dailyLimitMinutes);
+            return byStars < byDay ? byStars : byDay;
+        }
+
+        /// <summary>在余额与额度内，最多能兑多少星（用于兑换窗口的数值上限）</summary>
+        public static int MaxRedeemableStars(int balanceStars, int secondsPerStar, int usedSeconds, int dailyLimitMinutes)
+        {
+            if (balanceStars <= 0) return 0;
+            int byDay = RemainingDailySeconds(usedSeconds, dailyLimitMinutes);
+            if (byDay == int.MaxValue) return balanceStars;
+            int per = ClampSecondsPerStar(secondsPerStar);
+            int starsByDay = byDay / per;
+            return starsByDay < balanceStars ? starsByDay : balanceStars;
+        }
     }
 
     // ===== 答题反馈（P0-2）=====

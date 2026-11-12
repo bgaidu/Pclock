@@ -157,6 +157,63 @@ namespace PCLock
             return v;
         }
 
+        // === 星星钱包（P1-11，默认关闭：关闭时保持解锁自动折算）===
+        public static bool IsStarWalletEnabled(string user) { return GetInt(UKey(user, "StarWallet"), 0) == 1; }
+        public static void SetStarWalletEnabled(string user, bool on) { SetInt(UKey(user, "StarWallet"), on ? 1 : 0); }
+
+        public static int GetStarBalance(string user) { return GetInt(UKey(user, "StarBalance"), 0); }
+        public static void SetStarBalance(string user, int stars)
+        {
+            if (stars < 0) stars = 0;
+            SetInt(UKey(user, "StarBalance"), stars);
+        }
+        public static void AddStarBalance(string user, int delta)
+        {
+            long v = (long)GetStarBalance(user) + delta;
+            if (v < 0) v = 0;
+            if (v > int.MaxValue) v = int.MaxValue;
+            SetStarBalance(user, (int)v);
+        }
+
+        /// <summary>兑换汇率：每星多少秒（家长可配，默认 60，钳制 10-3600）</summary>
+        public static int GetStarSecondsPerStar(string user)
+        {
+            return StarWallet.ClampSecondsPerStar(GetInt(UKey(user, "StarSecPerStar"), StarWallet.DefaultSecondsPerStar));
+        }
+        public static void SetStarSecondsPerStar(string user, int seconds)
+        {
+            SetInt(UKey(user, "StarSecPerStar"), StarWallet.ClampSecondsPerStar(seconds));
+        }
+
+        /// <summary>每日兑换上限（分钟，0=不限，默认 30）</summary>
+        public static int GetStarDailyLimitMinutes(string user)
+        {
+            return StarWallet.ClampDailyLimitMinutes(GetInt(UKey(user, "StarDailyMin"), StarWallet.DefaultDailyLimitMinutes));
+        }
+        public static void SetStarDailyLimitMinutes(string user, int minutes)
+        {
+            SetInt(UKey(user, "StarDailyMin"), StarWallet.ClampDailyLimitMinutes(minutes));
+        }
+
+        /// <summary>当日已兑换秒数；日期键不是今天就视为 0（跨天自动归零）</summary>
+        public static int GetStarRedeemedSecondsToday(string user)
+        {
+            string day = DateTime.Now.ToString("yyyy-MM-dd");
+            if (GetStr(UKey(user, "StarRedeemDay"), "") != day) return 0;
+            int v = GetInt(UKey(user, "StarRedeemSec"), 0);
+            return v < 0 ? 0 : v;
+        }
+        public static void AddStarRedeemedSeconds(string user, int seconds)
+        {
+            if (seconds <= 0) return;
+            string day = DateTime.Now.ToString("yyyy-MM-dd");
+            int used = (GetStr(UKey(user, "StarRedeemDay"), "") == day) ? GetInt(UKey(user, "StarRedeemSec"), 0) : 0;
+            long v = (long)used + seconds;
+            if (v > int.MaxValue) v = int.MaxValue;
+            SetStr(UKey(user, "StarRedeemDay"), day);
+            SetInt(UKey(user, "StarRedeemSec"), (int)v);
+        }
+
         // === 练习模式（P1-9，默认关闭）===
         public static bool IsPracticeEnabled(string user) { return GetInt(UKey(user, "PracticeOn"), 0) == 1; }
         public static void SetPracticeEnabled(string user, bool on) { SetInt(UKey(user, "PracticeOn"), on ? 1 : 0); }

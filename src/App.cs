@@ -355,6 +355,14 @@ namespace PCLock
             Store.SetRemaining(remaining);
         }
 
+        /// <summary>星星兑换等按秒加时：立即生效并持久化（不足 1 分钟也不丢）</summary>
+        public void AddTimeSeconds(int seconds)
+        {
+            if (seconds <= 0) return;
+            remaining += seconds;
+            Store.SetRemaining(remaining);
+        }
+
         /// <summary>P0-5：家长临时放行 N 分钟（不重置为完整一轮时长，到点再次锁定）</summary>
         public void TempPass(int minutes)
         {

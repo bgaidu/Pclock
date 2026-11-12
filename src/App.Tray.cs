@@ -21,6 +21,9 @@ namespace PCLock
             // 菜单项写中文原文，由 LocalizeItems 翻译并缓存，切换语言时可即时重刷
             menu.Items.Add("设置…（需家长PIN）", null, delegate { ShowSettings(); });
             menu.Items.Add("立即锁定", null, delegate { LockNow(); });
+            // P1-11 星星钱包：孩子可自助把星星换成使用时间（默认关闭，走钱包模式才显示）
+            if (Store.IsStarRewardEnabled(currentUser) && Store.IsStarWalletEnabled(currentUser))
+                menu.Items.Add("⭐ 星星兑换时间…", null, delegate { OpenStarRedeem(); });
             // P1-9 练习模式：不解锁、不消耗额度，主倒计时照常运行（默认关闭时不显示）
             if (Store.IsPracticeEnabled(currentUser))
                 menu.Items.Add("练习模式（不解锁）", null, delegate { OpenPractice(); });
@@ -40,7 +43,21 @@ namespace PCLock
             Program.RegisterDynamicRefresh(langRefresh);
         }
 
-        /// <summary>导出诊断包：版本、文件清单、err.txt 尾部、近期日志、脱敏配置摘要。</summary>
+        /// <summary>孩子自助兑换星星（不需要 PIN；每次兑换写审计日志，家长可在使用记录里核对）</summary>
+        void OpenStarRedeem()
+        {
+            if (lockForm != null) lockForm.SuspendInteraction = true;
+            try
+            {
+                using (StarRedeemForm f = new StarRedeemForm()) f.ShowDialog();
+            }
+            finally
+            {
+                if (lockForm != null) lockForm.SuspendInteraction = false;
+            }
+        }
+
+        /// <summary>导出诊断包：版本、文件清单、错误日志尾部、近期日志、脱敏配置摘要。</summary>
         void ExportDiagnostics()
         {
             if (lockForm != null) lockForm.SuspendInteraction = true;

@@ -17,7 +17,8 @@ namespace PCLock
         TextBox txtDailyLimit, txtUnlockLimit, txtRules, txtRest, txtTempPass;
         TextBox txtQCount, txtStreak, txtExtraThreshold, txtExtraPer;
         TextBox[] txtStars = new TextBox[5];
-        CheckBox chkAntiTamper, chkFeedback, chkStar, chkPractice;
+        CheckBox chkAntiTamper, chkFeedback, chkStar, chkPractice, chkStarWallet;
+        TextBox txtStarSecPerStar, txtStarDailyMin;
         CheckBox chkMathChoice, chkChineseWord, chkTrueFalse, chkChildGrade, chkReview;
         ComboBox cbDifficulty, cbTerm, cbLang;
         TextBox txtBank, txtHold, txtEncourage, txtHolidays, txtLogKeep;
@@ -133,6 +134,7 @@ namespace PCLock
 
         void BuildQuizPage(TabPage p)
         {
+            p.AutoScroll = true;   // 星级钱包新增三项后页面变长，小屏可滚动
             p.Controls.Add(L("每次锁屏题量（1-30，默认 10）", 15, 20));
             txtQCount = B(250, 18, 70); p.Controls.Add(txtQCount);
             p.Controls.Add(L("需答对题数（默认=题量，即全部答对；答错扣 1 星，最低 0 星）", 15, 55));
@@ -163,10 +165,20 @@ namespace PCLock
                 p.Controls.Add(txtStars[i]);
             }
 
+            chkStarWallet = new CheckBox();
+            chkStarWallet.Text = "孩子可自助兑换星星（开启后解锁不再自动折算）";
+            chkStarWallet.AutoSize = true;
+            chkStarWallet.Location = new Point(15, 278);
+            p.Controls.Add(chkStarWallet);
+            p.Controls.Add(L("每星兑换秒数（默认 60，即 1 星 = 1 分钟）：", 15, 306));
+            txtStarSecPerStar = B(360, 304, 60); p.Controls.Add(txtStarSecPerStar);
+            p.Controls.Add(L("每日兑换上限（分钟，0=不限）：", 15, 334));
+            txtStarDailyMin = B(360, 332, 60); p.Controls.Add(txtStarDailyMin);
+
             chkPractice = new CheckBox();
             chkPractice.Text = "启用练习模式（锁屏/托盘可进入；不解锁、不暂停倒计时）";
             chkPractice.AutoSize = true;
-            chkPractice.Location = new Point(15, 305);
+            chkPractice.Location = new Point(15, 372);
             p.Controls.Add(chkPractice);
         }
 
@@ -298,7 +310,7 @@ namespace PCLock
 
             p.Controls.Add(L("日志保留天数（0=永久，全局）", 15, 345));
             txtLogKeep = B(200, 342, 60); p.Controls.Add(txtLogKeep);
-            Label note2 = L("默认 90 天：启动时清理更早的 logs\\*.log，删除失败静默。", 270, 345);
+            Label note2 = L("默认 90 天：启动时清理更早的 log\\*.log，删除失败静默。", 270, 345);
             note2.ForeColor = Color.DimGray;
             p.Controls.Add(note2);
 
@@ -369,6 +381,9 @@ namespace PCLock
             chkStar.Checked = Store.IsStarRewardEnabled(user);
             int[] rewards = Store.GetStarRewards(user);
             for (int i = 0; i < 5; i++) txtStars[i].Text = rewards[i].ToString();
+            chkStarWallet.Checked = Store.IsStarWalletEnabled(user);
+            txtStarSecPerStar.Text = Store.GetStarSecondsPerStar(user).ToString();
+            txtStarDailyMin.Text = Store.GetStarDailyLimitMinutes(user).ToString();
             chkPractice.Checked = Store.IsPracticeEnabled(user);
             cbDifficulty.SelectedIndex = Store.GetPreferDifficulty(user);
             cbTerm.SelectedIndex = Store.GetTerm(user);
@@ -408,6 +423,9 @@ namespace PCLock
                 int[] rewards = new int[5];
                 for (int i = 0; i < 5; i++) rewards[i] = Int(txtStars[i].Text, i + 1);
                 Store.SetStarRewards(u, rewards);
+                Store.SetStarWalletEnabled(u, chkStarWallet.Checked);
+                Store.SetStarSecondsPerStar(u, Int(txtStarSecPerStar.Text, StarWallet.DefaultSecondsPerStar));
+                Store.SetStarDailyLimitMinutes(u, Int(txtStarDailyMin.Text, StarWallet.DefaultDailyLimitMinutes));
                 Store.SetPracticeEnabled(u, chkPractice.Checked);
                 Store.SetPreferDifficulty(u, cbDifficulty.SelectedIndex);
                 Store.SetTerm(u, cbTerm.SelectedIndex);

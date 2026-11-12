@@ -42,7 +42,38 @@ namespace PCLock
             return sb.ToString();
         }
 
-        /// <summary>只保留末尾 maxChars 个字符（避免 err.txt 无限增长把报告撑爆）</summary>
+        /// <summary>
+        /// 读取错误日志文本：优先 log\error-*.log（取最近 2 天拼接），
+        /// 兼容旧版本 exe 同目录的 err.txt（升级后旧文件不迁移也能看到）。
+        /// </summary>
+        public static string ReadErrorLogText(string installDir)
+        {
+            StringBuilder sb = new StringBuilder();
+            try
+            {
+                string logDir = Path.Combine(installDir, "log");
+                if (Directory.Exists(logDir))
+                {
+                    string[] errs = Directory.GetFiles(logDir, "error-*.log");
+                    Array.Sort(errs, StringComparer.OrdinalIgnoreCase);
+                    int start = Math.Max(0, errs.Length - 2);
+                    for (int i = start; i < errs.Length; i++)
+                    {
+                        try { sb.Append(File.ReadAllText(errs[i], Encoding.UTF8)); } catch (Exception) { }
+                        if (sb.Length > 0) sb.AppendLine();
+                    }
+                }
+                if (sb.Length == 0)
+                {
+                    string legacy = Path.Combine(installDir, "err.txt");
+                    if (File.Exists(legacy)) sb.Append(File.ReadAllText(legacy, Encoding.UTF8));
+                }
+            }
+            catch (Exception) { }
+            return sb.ToString();
+        }
+
+        /// <summary>只保留末尾 maxChars 个字符（避免错误日志无限增长把报告撑爆）</summary>
         public static string Tail(string text, int maxChars)
         {
             if (string.IsNullOrEmpty(text)) return "(空)";
@@ -76,7 +107,7 @@ namespace PCLock
             else b.AppendLine("(读取失败)");
 
             b.AppendLine();
-            b.AppendLine("===== [2] err.txt（末尾 " + MaxTailChars + " 字符） =====");
+            b.AppendLine("===== [2] 错误日志（末尾 " + MaxTailChars + " 字符） =====");
             b.AppendLine(Redact(Tail(errText, MaxTailChars)));
 
             b.AppendLine();
@@ -110,21 +141,19 @@ namespace PCLock
             }
             catch (Exception) { fileLines = null; }
 
-            string errText = "";
-            try
-            {
-                string err = Path.Combine(installDir, "err.txt");
-                if (File.Exists(err)) errText = File.ReadAllText(err, Encoding.UTF8);
-            }
-            catch (Exception) { errText = "(读取 err.txt 失败)"; }
+            string errText;
+            try { errText = ReadErrorLogText(installDir); }
+            catch (Exception) { errText = "(读取错误日志失败)"; }
 
             List<string> logs = new List<string>();
             try
             {
-                string logDir = Path.Combine(installDir, "logs");
+                string logDir = Path.Combine(installDir, "log");
+                if (!Directory.Exists(logDir)) logDir = Path.Combine(installDir, "logs");   // 兼容旧目录
                 if (Directory.Exists(logDir))
                 {
-                    string[] files = Directory.GetFiles(logDir, "*.log");
+                    string[] files = Directory.GetFiles(logDir, "audit-*.log");
+                    if (files.Length == 0) files = Directory.GetFiles(logDir, "*.log");
                     Array.Sort(files, StringComparer.OrdinalIgnoreCase);
                     int start = Math.Max(0, files.Length - MaxLogFiles);
                     for (int i = start; i < files.Length; i++)

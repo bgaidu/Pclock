@@ -33,7 +33,10 @@ namespace PCLock
             return r;
         }
 
-        /// <summary>解析日志文件名里的日期；非日期命名或非 .log 返回 false</summary>
+        /// <summary>
+        /// 解析日志文件名里的日期；支持 yyyy-MM-dd.log 与 audit-/error-/watchdog- 前缀，
+        /// 非 .log 或文件名里找不到日期返回 false。
+        /// </summary>
         public static bool TryParseLogDay(string fileName, out DateTime day)
         {
             day = DateTime.MinValue;
@@ -43,8 +46,17 @@ namespace PCLock
             if (slash >= 0) n = n.Substring(slash + 1);
             if (!n.EndsWith(".log", StringComparison.OrdinalIgnoreCase)) return false;
             string stem = n.Substring(0, n.Length - 4);
-            return DateTime.TryParseExact(stem, "yyyy-MM-dd",
-                CultureInfo.InvariantCulture, DateTimeStyles.None, out day);
+            for (int i = 0; i + 10 <= stem.Length; i++)
+            {
+                DateTime d;
+                if (DateTime.TryParseExact(stem.Substring(i, 10), "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture, DateTimeStyles.None, out d))
+                {
+                    day = d;
+                    return true;
+                }
+            }
+            return false;
         }
 
         /// <summary>删除超过保留期的日志文件，返回实际删除数量（IO 薄封装，失败静默）</summary>

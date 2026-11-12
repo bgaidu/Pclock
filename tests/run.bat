@@ -14,7 +14,7 @@ if not exist "%CSC%" set CSC=%SystemRoot%\Microsoft.NET\Framework\v4.0.30319\csc
   src\Housekeeping.cs src\AuditLog.cs src\BankSet.cs src\UiSafe.cs src\QuestionView.cs src\Diagnostics.cs src\UiText.cs ^
   tests\TUnit.cs tests\UnitTests.cs tests\HashTests.cs tests\MathAnswerTests.cs tests\OfflineDeductTests.cs ^
   tests\PolicyTests.cs tests\BankIoTests.cs tests\QuestionPolicyTests.cs tests\Batch3Tests.cs tests\Batch4Tests.cs ^
-  tests\Batch5Tests.cs tests\Batch6Tests.cs tests\Batch7Tests.cs tests\Batch8Tests.cs tests\Batch9Tests.cs
+  tests\Batch5Tests.cs tests\Batch6Tests.cs tests\Batch7Tests.cs tests\Batch8Tests.cs tests\Batch9Tests.cs tests\Batch10Tests.cs
 
 rem NOTE: the file list above is intentionally explicit (core files only).
 rem Do NOT glob src\*.cs here: it would pull in Program.cs/App.cs/LockForm.cs

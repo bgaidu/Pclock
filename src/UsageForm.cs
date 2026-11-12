@@ -76,9 +76,9 @@ namespace PCLock
             string crashes = "";
             try
             {
-                string errPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "err.txt");
-                if (File.Exists(errPath))
-                    crashes = string.Join("；", ConfigIo.CrashSummary(File.ReadAllText(errPath)));
+                string errText = Diagnostics.ReadErrorLogText(AppDomain.CurrentDomain.BaseDirectory);
+                if (!string.IsNullOrEmpty(errText))
+                    crashes = string.Join("；", ConfigIo.CrashSummary(errText));
             }
             catch (Exception) { }
             Label summary = new Label();
@@ -107,7 +107,7 @@ namespace PCLock
             return Strings.Fmt("近 30 天合计：{0} 小时 {1} 分\n最弱题目（作答≥3 次）：{2}\n本地异常摘要：{3}",
                 monthTotal / 3600, (monthTotal % 3600) / 60,
                 (weak == "" ? Strings.Get("暂无数据") : weak),
-                (crashes == "" ? Strings.Get("无 err.txt") : crashes));
+                (crashes == "" ? Strings.Get("无错误日志") : crashes));
         }
 
         void DrawChart(object sender, PaintEventArgs e)

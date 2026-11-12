@@ -16,28 +16,39 @@ namespace PCLock
     {
         static string LogDir
         {
-            get { return AppDomain.CurrentDomain.BaseDirectory; }
+            get { return System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "log"); }
         }
         static string LogFile
         {
-            get { return System.IO.Path.Combine(LogDir, "watchdog_log.txt"); }
+            get { return System.IO.Path.Combine(LogDir, "watchdog-" + DateTime.Now.ToString("yyyy-MM-dd") + ".log"); }
         }
         static string CrashFile
         {
-            get { return System.IO.Path.Combine(LogDir, "watchdog_crash.log"); }
+            get { return System.IO.Path.Combine(LogDir, "watchdog-crash-" + DateTime.Now.ToString("yyyy-MM-dd") + ".log"); }
+        }
+
+        static void EnsureLogDir()
+        {
+            try
+            {
+                if (!Directory.Exists(LogDir)) Directory.CreateDirectory(LogDir);
+            }
+            catch { }
         }
 
         public static void Run()
         {
             try
             {
-                File.WriteAllText(LogFile, "Run started\n");
+                EnsureLogDir();
+                // 追加而不是覆盖：同一天多次启动看门狗时保留当天轨迹
+                File.AppendAllText(LogFile, "[" + DateTime.Now.ToString("HH:mm:ss") + "] Run started\n");
                 RunInternal();
-                File.WriteAllText(LogFile, "RunInternal returned\n");
+                File.AppendAllText(LogFile, "RunInternal returned\n");
             }
             catch (Exception ex)
             {
-                try { File.WriteAllText(CrashFile, ex.ToString()); } catch { }
+                try { EnsureLogDir(); File.AppendAllText(CrashFile, ex.ToString()); } catch { }
                 Environment.Exit(1);
             }
         }

@@ -155,7 +155,7 @@ public class Batch6Tests
             new string[] { "2026-11-11.log\nOK" }, "题量=10",
             new DateTime(2026, 11, 12, 10, 0, 0));
         Assert.IsTrue(r.IndexOf("[1] 安装目录文件清单", StringComparison.Ordinal) >= 0, "段 1");
-        Assert.IsTrue(r.IndexOf("[2] err.txt", StringComparison.Ordinal) >= 0, "段 2");
+        Assert.IsTrue(r.IndexOf("[2] 错误日志", StringComparison.Ordinal) >= 0, "段 2");
         Assert.IsTrue(r.IndexOf("[3] 最近", StringComparison.Ordinal) >= 0, "段 3");
         Assert.IsTrue(r.IndexOf("[4] 配置摘要", StringComparison.Ordinal) >= 0, "段 4");
         Assert.IsTrue(r.IndexOf("v1.6.6 (abc1234)", StringComparison.Ordinal) >= 0, "版本与 commit");

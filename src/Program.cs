@@ -33,26 +33,34 @@ namespace PCLock
         const int PROCESS_SYSTEM_DPI_AWARE = 1;
         const int PROCESS_PER_MONITOR_DPI_AWARE = 2;
 
+        /// <summary>错误/诊断日志：按天写入 log\error-yyyy-MM-dd.log（与审计日志同目录）</summary>
         static string LogPath
         {
-            get { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "err.txt"); }
+            get
+            {
+                return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "log",
+                    "error-" + DateTime.Now.ToString("yyyy-MM-dd") + ".log");
+            }
         }
 
         internal static void Log(string msg)
         {
             try
             {
-                // 日志滚动：超过 512KB 时清空重建，避免长期运行无限增长
-                if (File.Exists(LogPath))
+                string path = LogPath;
+                string dir = Path.GetDirectoryName(path);
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                // 日志滚动：当天文件超过 512KB 时清空重建，避免长期运行无限增长
+                if (File.Exists(path))
                 {
                     try
                     {
-                        if (new FileInfo(LogPath).Length > 512 * 1024)
-                            File.Delete(LogPath);
+                        if (new FileInfo(path).Length > 512 * 1024)
+                            File.Delete(path);
                     }
                     catch { }
                 }
-                File.AppendAllText(LogPath,
+                File.AppendAllText(path,
                     "[" + DateTime.Now.ToString("HH:mm:ss.fff") + "] " + msg + Environment.NewLine);
             }
             catch { }
@@ -105,7 +113,7 @@ namespace PCLock
             try
             {
                 MessageBox.Show("PCLock 崩溃：\n\n" + (ex != null ? ex.Message : "unknown") +
-                    "\n\n完整信息已写入 err.txt",
+                    "\n\n完整信息已写入 log 目录的错误日志",
                     "PCLock", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             catch { }
@@ -139,7 +147,7 @@ namespace PCLock
             try
             {
                 MessageBox.Show("PCLock 出错：\n\n" + ex.Message +
-                    "\n\n完整信息已写入 err.txt",
+                    "\n\n完整信息已写入 log 目录的错误日志",
                     "PCLock", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             catch { }
@@ -149,7 +157,7 @@ namespace PCLock
         static void Main(string[] args)
         {
             Log("=== PCLock Main start ===");
-            Store.SetLogSink(Log);   // Store（核心层）的日志经此 sink 落到 err.txt；测试构建不编译本文件，Store 自动静默
+            Store.SetLogSink(Log);   // Store（核心层）的日志经此 sink 落到 log\error-*.log；测试构建不编译本文件，Store 自动静默
             Log("ExePath=" + Application.ExecutablePath);
             Log("StartupPath=" + Application.StartupPath);
             Log("Args=" + string.Join(" ", args));
@@ -235,7 +243,7 @@ namespace PCLock
                 try
                 {
                     MessageBox.Show("PCLock 启动失败：\n\n" + ex.Message +
-                        "\n\n完整信息已写入 err.txt",
+                        "\n\n完整信息已写入 log 目录的错误日志",
                         "PCLock", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
                 catch { }

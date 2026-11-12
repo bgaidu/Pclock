@@ -7,7 +7,7 @@ PCLock 离线升级助手（不联网、不改注册表、不触碰防作弊）
   4. 只替换白名单文件：PCLock.exe / PCLock.exe.config / AppIcon.ico
   5. 校验替换后的文件版本；任一环节失败自动从备份回滚
 
-明确不会动：chinese.txt、english.txt、banks\、logs\、review-*.json、
+明确不会动：chinese.txt、english.txt、banks\、log\、logs\、review-*.json、
 HKLM 注册表（PIN / 时长 / 时段 / 额度 / 加练池）、计划任务。
 #>
 [CmdletBinding()]

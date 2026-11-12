@@ -24,6 +24,7 @@ _Version.cs
 .workbuddy/
 
 # 运行期生成的数据/记录（不入库）
+log/
 logs/
 SHA256SUMS.txt
 review.json
