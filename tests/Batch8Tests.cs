@@ -18,7 +18,7 @@ public class Batch8Tests
         string s = AnswerFeedback.StatusText(true, 5);
         Assert.IsTrue(s.Contains("5"), "冷却中应显示剩余秒数");
         Assert.IsTrue(s.Contains("继续答题"), "反馈开启应引导孩子点「继续答题」");
-        Assert.IsTrue(s.Contains("全部清零"), "必须保留答错清零的提示");
+        Assert.IsTrue(s.Contains("扣 1 星"), "必须提示答错扣 1 星");
     }
 
     [Test]
@@ -43,7 +43,7 @@ public class Batch8Tests
     public void PlainStatusAfterCoolingResetsWithoutPlaceholder()
     {
         string s = AnswerFeedback.StatusText(false, 0);
-        Assert.IsTrue(s.Contains("全部清零"), "冷却结束重建批次时保留清零语义");
+        Assert.IsTrue(s.Contains("扣 1 星"), "冷却结束仍要提示扣星而不是清零");
         Assert.IsFalse(s.Contains("{0}"), "不应残留占位符");
     }
 
@@ -51,7 +51,7 @@ public class Batch8Tests
     public void AnswerInputStaysBlockedUntilManualContinue()
     {
         // 负向变异：若实现成「冷却结束即恢复答题输入」，孩子能对着屏幕上的正确答案
-        // 反复点旧题刷判定，答错清零语义被绕过。
+        // 反复点旧题刷判定，扣星与补题的语义被绕过。
         Assert.IsTrue(AnswerFeedback.BlocksAnswerInput(true), "反馈停留期必须拦截答题输入");
         Assert.IsFalse(AnswerFeedback.BlocksAnswerInput(false), "非反馈期不应拦截");
     }
@@ -117,5 +117,32 @@ public class Batch8Tests
             foreach (int sec in new int[] { 0, 1, 5, 30 })
                 Assert.IsTrue(AnswerFeedback.StatusText(on, sec).Length > 0,
                     "状态行不能为空（feedback=" + on + ", sec=" + sec + "）");
+    }
+
+    [Test]
+    public void WrongAnswerCostsOneStarButNeverGoesNegative()
+    {
+        Assert.AreEqual(2, AnswerFlow.StarsAfterWrong(3), "答错扣 1 星，不是清零");
+        Assert.AreEqual(0, AnswerFlow.StarsAfterWrong(1), "1 星答错扣到 0");
+        Assert.AreEqual(0, AnswerFlow.StarsAfterWrong(0), "扣完为止，不能变成负数");
+    }
+
+    [Test]
+    public void CorrectAnswerAddsOneStarAndReachesTarget()
+    {
+        Assert.AreEqual(1, AnswerFlow.StarsAfterCorrect(0));
+        Assert.AreEqual(5, AnswerFlow.StarsAfterCorrect(4));
+        Assert.IsTrue(AnswerFlow.Reached(10, 10), "达到目标星数应判定达标");
+        Assert.IsFalse(AnswerFlow.Reached(9, 10), "差一星未达标");
+        Assert.IsFalse(AnswerFlow.Reached(0, 0), "目标为 0 时不应判达标");
+    }
+
+    [Test]
+    public void WrongAnswerKeepsProgressInsteadOfResetting()
+    {
+        // 负向变异守卫：若有人把答错改回「整批清零」，连错 3 题后星数会变成 0
+        int stars = 7;
+        for (int i = 0; i < 3; i++) stars = AnswerFlow.StarsAfterWrong(stars);
+        Assert.AreEqual(4, stars, "连错 3 题只扣 3 星，进度不能归零");
     }
 }

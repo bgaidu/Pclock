@@ -41,7 +41,7 @@ namespace PCLock
             author.Location = new Point(20, 96);
 
             Label desc = new Label();
-            desc.Text = Strings.Fmt("功能说明：锁屏后需全部答对 {0} 道题（数学填答案，语文/英语四选一，答错清零重来），或由家长输入 PIN 解锁。",
+            desc.Text = Strings.Fmt("功能说明：锁屏后需答对 {0} 道题（数学填答案，语文/英语四选一，答错扣 1 星并补一道新题），或由家长输入 PIN 解锁。",
                 Constants.TotalQuestions);
             desc.AutoSize = false;
             desc.Size = new Size(400, 70);
@@ -66,7 +66,7 @@ namespace PCLock
             langRefresh = delegate
             {
                 name.Text = Strings.Fmt("电脑锁 v{0} ({1})", AppVersion.Version, AppVersion.Commit);
-                desc.Text = Strings.Fmt("功能说明：锁屏后需全部答对 {0} 道题（数学填答案，语文/英语四选一，答错清零重来），或由家长输入 PIN 解锁。",
+                desc.Text = Strings.Fmt("功能说明：锁屏后需答对 {0} 道题（数学填答案，语文/英语四选一，答错扣 1 星并补一道新题），或由家长输入 PIN 解锁。",
                     Constants.TotalQuestions);
             };
             Program.RegisterDynamicRefresh(langRefresh);

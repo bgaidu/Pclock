@@ -135,11 +135,11 @@ namespace PCLock
         {
             p.Controls.Add(L("每次锁屏题量（1-30，默认 10）", 15, 20));
             txtQCount = B(250, 18, 70); p.Controls.Add(txtQCount);
-            p.Controls.Add(L("需连续答对题数（默认=题量，即全部答对；答错仍清零）", 15, 55));
+            p.Controls.Add(L("需答对题数（默认=题量，即全部答对；答错扣 1 星，最低 0 星）", 15, 55));
             txtStreak = B(380, 53, 70); p.Controls.Add(txtStreak);
 
             chkFeedback = new CheckBox();
-            chkFeedback.Text = "答错显示正确答案与解析（不改变「答错清零」）";
+            chkFeedback.Text = "答错显示正确答案与解析（不改变扣星与补题规则）";
             chkFeedback.AutoSize = true;
             chkFeedback.Location = new Point(15, 90);
             p.Controls.Add(chkFeedback);
@@ -398,7 +398,7 @@ namespace PCLock
                 Store.SetTempPassMinutes(u, Int(txtTempPass.Text, Constants.DefaultTempPassMinutes));
                 Store.SetAntiTamperEnabled(chkAntiTamper.Checked);
 
-                // 先写题量，再写连续答对数（后者会按题量钳制）
+                // 先写题量，再写需答对数（后者会按题量钳制）
                 Store.SetQuestionCount(u, Int(txtQCount.Text, QuizConfig.DefaultQuestionCount));
                 Store.SetRequiredStreak(u, Int(txtStreak.Text, Store.GetQuestionCount(u)));
                 Store.SetFeedbackEnabled(u, chkFeedback.Checked);

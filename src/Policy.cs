@@ -297,7 +297,7 @@ namespace PCLock
     // ===== 答题反馈（P0-2）=====
     public static class AnswerFeedback
     {
-        /// <summary>答错时展示的正确答案与解析；保留「答错清零」，仅增加反馈</summary>
+        /// <summary>答错时展示的正确答案与解析；只展示答案，不改动进度规则</summary>
         public static string Build(Question q)
         {
             if (q == null) return "";
@@ -324,15 +324,28 @@ namespace PCLock
         {
             if (feedbackOn)
                 return secondsLeft > 0
-                    ? Strings.Fmt("回答错误，全部清零重新开始，请 {0} 秒后点「继续答题」", secondsLeft)
-                    : Strings.Get("看完正确答案与解析后，点「继续答题」重新开始");
+                    ? Strings.Fmt("回答错误，扣 1 星，请 {0} 秒后点「继续答题」", secondsLeft)
+                    : Strings.Get("看完正确答案与解析后，点「继续答题」做下一题");
             return secondsLeft > 0
-                ? Strings.Fmt("回答错误，全部清零重新开始，请 {0} 秒后再试", secondsLeft)
-                : Strings.Get("回答错误，全部清零重新开始");
+                ? Strings.Fmt("回答错误，扣 1 星，请 {0} 秒后再试", secondsLeft)
+                : Strings.Get("回答错误，扣 1 星");
         }
 
         /// <summary>反馈停留期间拦截一切答题输入：否则孩子能对着屏幕上的正确答案反复点旧题刷判定</summary>
         public static bool BlocksAnswerInput(bool feedbackPending) { return feedbackPending; }
+    }
+
+    /// <summary>
+    /// 答题进度（星）纯逻辑：答对 +1 星；答错 -1 星但最低 0 星（扣完为止），
+    /// 同时由调用方追加一道新题，保证还有题可答。答对达到目标星数即解锁。
+    /// </summary>
+    public static class AnswerFlow
+    {
+        public static int StarsAfterCorrect(int stars) { return stars < 0 ? 1 : stars + 1; }
+
+        public static int StarsAfterWrong(int stars) { return stars > 0 ? stars - 1 : 0; }
+
+        public static bool Reached(int stars, int target) { return target > 0 && stars >= target; }
     }
 
     // ===== 答题判定可配（P0-7）=====
@@ -348,7 +361,7 @@ namespace PCLock
             return n;
         }
 
-        /// <summary>需连续答对 N 道（默认 = 题量，即全部答对）；答错仍整批清零，防作弊语义不变</summary>
+        /// <summary>需答对 N 道（默认 = 题量，即全部答对）；答错扣 1 星（最低 0），不回退到第 1 题重来</summary>
         public static int ClampStreak(int streak, int questionCount)
         {
             if (streak < 1) return questionCount;
@@ -357,7 +370,7 @@ namespace PCLock
         }
 
         /// <summary>
-        /// 题库因学期/题库名过滤而不足题量时，把「需连对」钳到实际题数。
+        /// 题库因学期/题库名过滤而不足题量时，把「需答对」钳到实际题数。
         /// 不钳会出现「状态栏写共 10 题、实际只有 3 题」——数字对不上，且配置形同失效。
         /// </summary>
         public static int EffectiveStreak(int configured, int available)

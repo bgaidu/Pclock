@@ -34,12 +34,13 @@ namespace PCLock
         Button pinOkBtn;
         Button pinBackBtn;
 
-        int correctCount;   // 本轮连续答对题数
+        int correctCount;   // 当前星数（已答对题数）：答错扣 1 星，最低 0
         int qIndex;         // 当前第几题
         List<Question> questions;
         List<Question> correctQuestions = new List<Question>(); // 本轮答对题（星级奖励结算用）
-        int baseQuestionCount;  // 普通题数量；之后的是加练题
-        int requiredStreak;     // 需连续答对多少道（默认 = 题量，即全部答对）
+        int baseQuestionCount;  // 初始普通题数量
+        int normalCount;        // 当前普通题总数（含答错补题）；其后的索引是加练题
+        int requiredStreak;     // 需答对多少道（默认 = 题量，即全部答对）
         string user;
         string hardReason;       // 非空 = 额度用尽/护眼休息/时间异常等硬锁（不自动按时段解锁）
         int wrongLeft;      // 答错后的冷却秒数
@@ -304,14 +305,9 @@ namespace PCLock
             continueBtn.Click += delegate
             {
                 if (!feedbackPending) return;
-                feedbackPending = false;
-                feedbackQuestion = null;
-                feedbackLabel.Visible = false;
-                feedbackLabel.Text = "";
-                continueBtn.Visible = false;
-                // 看清解析后由孩子手动进入下一轮：此时才重建批次
-                // （答错清零 + 最新加练池），屏幕上的题与刚才的答案始终对得上
-                StartBatch();
+                wrongLeft = 0;
+                // 看清解析后进入下一题：不再重建批次，已得的星保留（答错只扣 1 星）
+                AdvanceAfterWrong();
             };
             Controls.Add(continueBtn);
 
@@ -483,19 +479,27 @@ namespace PCLock
             gradeBox.Top = ClientSize.Height - practiceBtn.Height - 96;
         }
 
-        void StartBatch()
+        /// <summary>按当前设置取题：初始批次与答错补题共用同一套参数，避免两条路径漂移</summary>
+        List<Question> NewQuestions(int count, bool useSettings)
         {
             int[] grades = selectedGrade > 0 ? new int[] { selectedGrade } : Store.GetGrades(user);
             int[] subjInts = Store.GetSubjects(user);
             Subject[] subs = new Subject[subjInts.Length];
             for (int i = 0; i < subjInts.Length; i++) subs[i] = (Subject)subjInts[i];
+            if (!useSettings)
+                return QuestionBank.GetBatchEx(grades, subs, count, 0, 0, "", false, false, false);
+            return QuestionBank.GetBatchEx(grades, subs, count,
+                Store.GetPreferDifficulty(user), Store.GetTerm(user), Store.GetBankFilter(user),
+                Store.IsMathChoiceOn(user), Store.IsChineseWordOn(user), Store.IsTrueFalseOn(user));
+        }
+
+        void StartBatch()
+        {
             int count = Store.GetQuestionCount(user);          // P0-7 题量可配（默认 10）
             requiredStreak = Store.GetRequiredStreak(user);
             baseQuestionCount = count;
-            questions = QuestionBank.GetBatchEx(grades, subs, count,
-                Store.GetPreferDifficulty(user), Store.GetTerm(user), Store.GetBankFilter(user),
-                Store.IsMathChoiceOn(user), Store.IsChineseWordOn(user), Store.IsTrueFalseOn(user));
-            // 题库收窄（学期/题库名过滤）后可能不足题量：按实际题数显示，并把「需连对」钳到实际题数，
+            questions = NewQuestions(count, true);
+            // 题库收窄（学期/题库名过滤）后可能不足题量：按实际题数显示，并把「需答对」钳到实际题数，
             // 否则状态栏会写着「共 10 题」而孩子答到第 4 题就无题可答（配置失效且数字对不上）
             if (baseQuestionCount > questions.Count) baseQuestionCount = questions.Count;
             requiredStreak = QuizConfig.EffectiveStreak(requiredStreak, baseQuestionCount);
@@ -505,11 +509,11 @@ namespace PCLock
             // P0-6 加练池：欠的题追加到本批尾部，必须全部答对才能解锁；跨天/重启保留
             PracticeState ps = Store.GetPracticeState(user);
             if (ps.ExtraPending > 0)
-                questions.AddRange(QuestionBank.GetBatchEx(grades, subs, ps.ExtraPending, 0, 0, "",
-                    false, false, false));
+                questions.AddRange(NewQuestions(ps.ExtraPending, false));
 
             qIndex = 0;
             correctCount = 0;
+            normalCount = baseQuestionCount;
             correctQuestions.Clear();
             ShowCurrentQuestion();
             UpdateStatus();
@@ -561,18 +565,20 @@ namespace PCLock
                 Subject s = questions[qIndex].Subject;
                 subj = Strings.Get((s == Subject.Chinese) ? "语文" : (s == Subject.Math) ? "数学" : "英语");
             }
-            string extra = (questions.Count > baseQuestionCount)
-                ? Strings.Fmt(" + {0} 道加练题", questions.Count - baseQuestionCount) : "";
-            string phase = (qIndex >= baseQuestionCount && questions.Count > baseQuestionCount) ? Strings.Get("（加练）") : "";
+            int practiceStart = normalCount;
+            int extraCount = questions.Count - practiceStart;
+            if (extraCount < 0) extraCount = 0;
+            string extra = extraCount > 0 ? Strings.Fmt(" + {0} 道加练题", extraCount) : "";
+            string phase = (qIndex >= practiceStart && extraCount > 0) ? Strings.Get("（加练）") : "";
             string cheer = correctCount > 0 ? Store.GetEncourageText(user) + "　" : "";
-            statusLabel.Text = cheer + Strings.Fmt("共 {0} 题{1}（{2}），需连续答对 {3} 道{4}（当前第 {5} 题，已连对 {6} 题）",
-                baseQuestionCount, extra, subj, requiredStreak, phase, cur, correctCount);
+            statusLabel.Text = cheer + Strings.Fmt("共 {0} 题{1}（{2}），需答对 {3} 道{4}（当前第 {5} 题，已得 {6} 星）",
+                questions.Count, extra, subj, requiredStreak, phase, cur, correctCount);
         }
 
         void SubmitAnswer()
         {
             // 冷却结束后、点「继续答题」之前也必须拦截：否则孩子能对着屏幕上的
-            // 正确答案反复点旧题刷判定（答错清零的语义会被绕过）
+            // 正确答案反复点旧题刷判定（扣星与补题的语义会被绕过）
             if (wrongLeft > 0 || AnswerFeedback.BlocksAnswerInput(feedbackPending)) return;
             if (questions[qIndex].Type != QType.MathCalc) return;
             int v;
@@ -591,7 +597,7 @@ namespace PCLock
         void OnOptionClick(object sender, EventArgs e)
         {
             // 冷却结束后、点「继续答题」之前也必须拦截：否则孩子能对着屏幕上的
-            // 正确答案反复点旧题刷判定（答错清零的语义会被绕过）
+            // 正确答案反复点旧题刷判定（扣星与补题的语义会被绕过）
             if (wrongLeft > 0 || AnswerFeedback.BlocksAnswerInput(feedbackPending)) return;
             if (questions == null || qIndex < 0 || qIndex >= questions.Count) return;
             Question q = questions[qIndex];
@@ -609,21 +615,29 @@ namespace PCLock
             correctQuestions.Add(answered);
             Store.RecordAnswer(user, answered, true);       // 按题统计 + SM-2 复习进度
             if (Store.IsReviewOn(user)) ReviewBank.Remove(user, QuestionStats.KeyOf(answered));
-            if (qIndex >= baseQuestionCount && questions.Count > baseQuestionCount)
+            int practiceStart = normalCount;
+            if (qIndex >= practiceStart && questions.Count > practiceStart)
             {
                 // 加练题答对：逐道扣除待加练数（跨天 / 重启保留）
                 PracticeState ps = ExtraPractice.OnExtraCorrect(Store.GetPracticeState(user));
                 Store.SetPracticeState(user, ps);
             }
-            correctCount++;
+            correctCount = AnswerFlow.StarsAfterCorrect(correctCount);
             qIndex++;
-            if (qIndex >= questions.Count) { FinishBatch(); return; }
-            if (qIndex < baseQuestionCount && correctCount >= requiredStreak)
+            if (AnswerFlow.Reached(correctCount, requiredStreak))
             {
-                // 达到连续答对目标：跳过剩余普通题，进入加练题；没有加练题则直接解锁
-                if (questions.Count > baseQuestionCount) qIndex = baseQuestionCount;
-                else { FinishBatch(); return; }
+                // 达到目标星数：有加练题则跳过剩余普通题继续做完，否则直接解锁
+                if (questions.Count > practiceStart && qIndex < questions.Count)
+                {
+                    if (qIndex < practiceStart) qIndex = practiceStart;
+                    ShowCurrentQuestion();
+                    UpdateStatus();
+                    return;
+                }
+                FinishBatch();
+                return;
             }
+            if (qIndex >= questions.Count) { FinishBatch(); return; }
             ShowCurrentQuestion();
             UpdateStatus();
         }
@@ -631,7 +645,7 @@ namespace PCLock
         /// <summary>结算本批：星级奖励写入待结算秒数，由 App.Unlock 一次性取出（未启用时恒为 0）</summary>
         void FinishBatch()
         {
-            UnlockReason = "答题达标（连续答对 " + correctCount + " 道）";
+            UnlockReason = "答题达标（答对 " + correctCount + " 道）";
             int reward = 0;
             if (Store.IsStarRewardEnabled(user))
                 reward = StarReward.RewardSeconds(correctQuestions, Store.GetStarRewards(user));
@@ -641,8 +655,8 @@ namespace PCLock
 
         void OnWrong()
         {
-            // 防作弊策略不变：答错整批清零、从第 1 题重新开始。
-            // 新增：累计错误达阈值时增加加练题（跨天/重启保留），并展示正确答案与解析。
+            // 答错：扣 1 星（最低 0，扣完为止），进度不回退到第 1 题；
+            // 同时补一道新题，保证还有题可答；达到阈值仍会额外增加加练题。
             Question wrong = questions[qIndex];
             PracticeState ps = Store.GetPracticeState(user);
             ps = ExtraPractice.OnWrong(ps, Store.GetExtraThreshold(user), Store.GetExtraPerThreshold(user));
@@ -651,12 +665,17 @@ namespace PCLock
             if (Store.IsReviewOn(user))
                 ReviewBank.RecordWrong(wrong, user, Store.GetReviewState(user, QuestionStats.KeyOf(wrong)));
 
-            correctCount = 0;
-            correctQuestions.Clear();
+            if (correctCount > 0)
+            {
+                correctCount = AnswerFlow.StarsAfterWrong(correctCount);
+                // 星数回退时同步撤掉一道已答对题，星级奖励按最终星数结算
+                if (correctQuestions.Count > 0) correctQuestions.RemoveAt(correctQuestions.Count - 1);
+            }
+            AddQuestionAfterWrong();
 
             // 【不要在这里 StartBatch】。旧实现答错瞬间就重建题目，屏幕换成新第 1 题，
             // 而下方反馈显示的却是刚答错那题的正确答案 —— 题与答案对不上。
-            // 现在保留当前题，让孩子看完解析后点「继续答题」再重建（或冷却结束自动重建）。
+            // 现在保留当前题，让孩子看完解析后点「继续答题」进入下一题。
             bool feedbackOn = Store.IsFeedbackEnabled(user);
             feedbackPending = feedbackOn;
             feedbackQuestion = feedbackOn ? wrong : null;
@@ -676,6 +695,50 @@ namespace PCLock
             }
             statusLabel.Text = AnswerFeedback.StatusText(feedbackOn, wrongLeft);
             LayoutControls();
+        }
+
+        /// <summary>
+        /// 答错后补一道新题，插在当前题后面（点「继续答题」后正好答到它），
+        /// 跳过与现有题干重复的题；答错普通题补普通题，答错加练题补加练题。
+        /// </summary>
+        void AddQuestionAfterWrong()
+        {
+            Question added = null;
+            for (int attempt = 0; attempt < 5 && added == null; attempt++)
+            {
+                List<Question> one = NewQuestions(1, true);
+                if (one == null || one.Count == 0) break;
+                bool dup = false;
+                foreach (Question q in questions)
+                    if (q != null && q.Prompt == one[0].Prompt) { dup = true; break; }
+                if (!dup) added = one[0];
+            }
+            if (added == null) return;
+            bool inPractice = qIndex >= normalCount;
+            int at = qIndex + 1;
+            if (at > questions.Count) at = questions.Count;
+            questions.Insert(at, added);
+            if (!inPractice) normalCount++;
+        }
+
+        /// <summary>答错反馈结束后进入下一题：不重建批次，已得的星保留（最多扣 1 星）。</summary>
+        void AdvanceAfterWrong()
+        {
+            feedbackPending = false;
+            feedbackQuestion = null;
+            feedbackLabel.Visible = false;
+            feedbackLabel.Text = "";
+            continueBtn.Visible = false;
+            answerBox.Enabled = true;
+            submitBtn.Enabled = true;
+            foreach (Button b in optBtns) b.Enabled = true;
+            qIndex++;
+            if (qIndex >= questions.Count && !AnswerFlow.Reached(correctCount, requiredStreak))
+                AddQuestionAfterWrong();
+            if (qIndex >= questions.Count) { FinishBatch(); return; }
+            ShowCurrentQuestion();
+            UpdateStatus();
+            answerBox.Focus();
         }
 
         void TryParentPin() { TryParentPin(false); }
@@ -772,11 +835,8 @@ namespace PCLock
                         }
                         else if (wrongLeft == 0)
                         {
-                            // 反馈关闭：冷却结束后才重建批次（答错清零），期间屏幕仍是原题
-                            answerBox.Enabled = true;
-                            submitBtn.Enabled = true;
-                            foreach (Button b in optBtns) b.Enabled = true;
-                            StartBatch();                 // 内部已刷新状态行
+                            // 反馈关闭：冷却结束后进入下一题（不重建批次，已得的星保留）
+                            AdvanceAfterWrong();
                         }
                         else
                         {
