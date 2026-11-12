@@ -13,6 +13,7 @@ namespace PCLock
         int[] seconds;
         DateTime[] days;
         Panel chart;
+        Action langRefresh;
 
         public UsageForm()
         {
@@ -85,13 +86,28 @@ namespace PCLock
             summary.Size = new Size(528, 78);
             summary.Location = new Point(16, 288);
             summary.ForeColor = Color.DimGray;
-            summary.Text = "近 30 天合计：" + (monthTotal / 3600) + " 小时 " + ((monthTotal % 3600) / 60) + " 分" +
-                Environment.NewLine + "最弱题目（作答≥3 次）：" + (weak == "" ? "暂无数据" : weak) +
-                Environment.NewLine + "本地异常摘要：" + (crashes == "" ? "无 err.txt" : crashes);
+            summary.Text = SummaryText(monthTotal, weak, crashes);
             Controls.Add(summary);
 
             Program.Localize(this);
             Program.FlattenButtons(this);
+
+            langRefresh = delegate
+            {
+                total.Text = Strings.Fmt("今日已用：{0} 分 {1} 秒", Store.GetUsedToday(user) / 60,
+                    Store.GetUsedToday(user) % 60);
+                summary.Text = SummaryText(monthTotal, weak, crashes);
+            };
+            Program.RegisterDynamicRefresh(langRefresh);
+        }
+
+        /// <summary>30 天汇总用整句模板，避免英文模式下出现「Past 30 days: 12 小时」式中英混排</summary>
+        static string SummaryText(long monthTotal, string weak, string crashes)
+        {
+            return Strings.Fmt("近 30 天合计：{0} 小时 {1} 分\n最弱题目（作答≥3 次）：{2}\n本地异常摘要：{3}",
+                monthTotal / 3600, (monthTotal % 3600) / 60,
+                (weak == "" ? Strings.Get("暂无数据") : weak),
+                (crashes == "" ? Strings.Get("无 err.txt") : crashes));
         }
 
         void DrawChart(object sender, PaintEventArgs e)

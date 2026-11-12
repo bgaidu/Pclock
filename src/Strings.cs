@@ -8,7 +8,7 @@ namespace PCLock
     /// 轻量多语言层：以中文原文为 key，未收录的条目原样返回。
     /// 动态文案请用 Fmt("&lt;中文模板&gt;", args)（模板本身也是 key），避免把中文片段拼进英文句子。
     /// 窗口构造末尾调用 Program.Localize(this) 统一翻译控件文字，新增界面无需逐条赋值。
-    /// 语言偏好存注册表，默认中文；切换后新打开的窗口生效。
+    /// 语言偏好存注册表，默认中文；切换后所有已打开窗口通过 LanguageChanged 即时刷新。
     /// </summary>
     public static class Strings
     {
@@ -21,6 +21,10 @@ namespace PCLock
             { "电脑锁 - 自由使用（不计时）", "PCLock - Free use (not counted)" },
             { "电脑锁 - 剩余 {0}", "PCLock - {0} left" },
             { "导出诊断包…", "Export diagnostics..." },
+            { "已切换为中文，所有已打开的窗口立即生效。", "Switched to Chinese. All open windows updated." },
+            { "已切换为英文，所有已打开的窗口立即生效。", "Switched to English. All open windows updated." },
+            { "近 30 天合计：{0} 小时 {1} 分\n最弱题目（作答≥3 次）：{2}\n本地异常摘要：{3}",
+              "Past 30 days: {0} h {1} min\nWeakest questions (>=3 attempts): {2}\nLocal error summary: {3}" },
             { "诊断包已导出：{0}", "Diagnostics saved: {0}" },
             { "诊断包导出失败：{0}", "Diagnostics export failed: {0}" },
             { "{0} 小时 {1} 分", "{0} h {1} min" },
@@ -182,7 +186,6 @@ namespace PCLock
             { "已继续计时。", "Timer resumed." },
             { "已为本次会话增加 15 分钟使用时间。", "Added 15 minutes to this session." },
             { "已保存。本次剩余时间已重置。", "Saved. Remaining time for this session has been reset." },
-            { "已切换为中文，重新打开的窗口生效。", "Switched to Chinese. Reopen windows to apply." },
             { "请先启动电脑锁主程序后再操作。", "Start PCLock first, then try again." },
             { "请先启动电脑锁主程序后再锁定。", "Start PCLock first, then lock." },
             { "请先启动电脑锁主程序后再卸载。", "Start PCLock first, then uninstall." },
@@ -280,11 +283,40 @@ namespace PCLock
             { "导入失败：", "Import failed: " }
         };
 
-        public static string Lang { get; set; }
+        // 语言偏好是全局状态，但本类属于纯逻辑层（tests\run.bat 编译），
+        // 不能引用任何 WinForms 类型。界面刷新通过 LanguageChanged 事件解耦，
+        // 由 Program 订阅并统一重刷已打开窗口的文案。
+        static string lang = "zh";
 
-        static Strings() { Lang = "zh"; }
+        public static event Action LanguageChanged;
 
-        public static bool IsEnglish { get { return Lang == "en"; } }
+        public static string Lang
+        {
+            get { return lang; }
+            set { SetLanguage(value); }   // 兼容旧代码直接赋值
+        }
+
+        public static bool IsEnglish { get { return lang == "en"; } }
+
+        /// <summary>
+        /// 切换语言；值未变化时不触发事件（幂等）。
+        /// 返回 true 表示确实发生了变化、已通知所有订阅者。
+        /// </summary>
+        public static bool SetLanguage(string value)
+        {
+            string v = (value == "en") ? "en" : "zh";
+            if (v == lang) return false;
+            lang = v;
+            Action h = LanguageChanged;
+            if (h != null) h();
+            return true;
+        }
+
+        /// <summary>该中文文案是否收录在词典中；仅收录项才会被 Localize 缓存原文。</summary>
+        public static bool Contains(string zh)
+        {
+            return !string.IsNullOrEmpty(zh) && En.ContainsKey(zh);
+        }
 
         /// <summary>翻译一段固定文案；未收录时原样返回中文</summary>
         public static string Get(string zh)

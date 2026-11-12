@@ -51,6 +51,7 @@ namespace PCLock
         Timer uiTimer;
         bool dueToWindow;   // true=因"不在每日可用时段"而锁（硬锁）
         bool restActive;    // 护眼休息中（用字段而非 restLabel.Visible：构造期 getter 不可靠）
+        Action langRefresh; // 语言切换时重算动态状态行（Program 只持弱引用）
         bool autoUnlocked;  // 自动解锁只触发一次
 
         Label feedbackLabel;    // 答错后的正确答案 / 解析
@@ -103,22 +104,21 @@ namespace PCLock
             }
             LayoutControls();
 
-            // 多语言：统一在控件创建完成后套用，未收录的字符串原样显示中文
-            titleLabel.Text = Strings.Get("时间已到，已锁定");
-            parentBtn.Text = Strings.Get("家长入口");
-            settingsBtn.Text = Strings.Get("家长设置");
-            practiceBtn.Text = Strings.Get("练习模式");
-            continueBtn.Text = Strings.Get("继续答题");
-            submitBtn.Text = Strings.Get("确 定");
-            pinOkBtn.Text = Strings.Get("解 锁");
-            pinBackBtn.Text = Strings.Get("返回");
-
-            // 低级钩子初始化放在最后，确保前面初始化失败时也能正确清理
+            // 静态文案统一保留中文原文，由 Program.Localize 翻译并缓存，
+            // 这样切换语言时才能按缓存原文即时重刷（构造期不能预先 Get 成英文）。
             hook = new LowLevelHook();
 
-            // 扁平化按钮，规避视觉样式绘制期偶发的"创建窗口句柄"失败
+            // 多语言：统一在控件创建完成后套用，未收录的字符串原样显示中文
             Program.Localize(this);
             Program.FlattenButtons(this);
+
+            // 静态文案由 Program.RefreshLanguage 重刷；这里只重算带数字/规则的状态行
+            langRefresh = delegate
+            {
+                if (dueToWindow) ApplyDueToWindowUI();
+                else if (questions != null && questions.Count > 0) UpdateStatus();
+            };
+            Program.RegisterDynamicRefresh(langRefresh);
         }
 
         void BuildTitleLabels()
@@ -183,7 +183,7 @@ namespace PCLock
             };
 
             pinOkBtn = new Button();
-            pinOkBtn.Text = "解锁";
+            pinOkBtn.Text = "解 锁";
             pinOkBtn.Location = new Point(20, 100);
             pinOkBtn.Size = new Size(120, 34);
             pinOkBtn.Click += delegate { TryParentPin(); };
@@ -251,6 +251,7 @@ namespace PCLock
             for (int i = 0; i < 4; i++)
             {
                 optBtns[i] = new Button();
+                optBtns[i].Name = "QuestionOption";   // 题目选项不是固定文案，Localize 必须跳过
                 optBtns[i].Font = new Font("Microsoft YaHei", 16);
                 optBtns[i].Size = new Size(380, 50);
                 optBtns[i].FlatStyle = FlatStyle.Flat;
@@ -344,16 +345,16 @@ namespace PCLock
                 string rules = Store.GetRules(user);
                 questionLabel.Text = string.IsNullOrWhiteSpace(rules)
                     ? "请使用家长 PIN 解锁" : ("当前规则：\n" + rules);
-                statusLabel.Text = Strings.Get("休息结束后自动解锁，或由家长输入 PIN / 临时放行。");
+                statusLabel.Text = "休息结束后自动解锁，或由家长输入 PIN / 临时放行。";
                 restActive = hardReason.IndexOf("休息") >= 0;
                 restLabel.Visible = restActive;
             }
             else
             {
-                titleLabel.Text = Strings.Get("当前不在使用时段");
+                titleLabel.Text = "当前不在使用时段";
                 string w = Store.GetWindow(user);
                 questionLabel.Text = string.IsNullOrWhiteSpace(w)
-                    ? Strings.Get("当前不在允许使用时段") : ("允许使用时段：\n" + w);
+                    ? "当前不在允许使用时段" : ("允许使用时段：\n" + w);
                 statusLabel.Text = WindowStatusText();
             }
             answerBox.Visible = false;

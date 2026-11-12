@@ -17,6 +17,7 @@ namespace PCLock
         Button submitBtn;
         Button[] optBtns = new Button[4];
         List<Question> batch;
+        Action langRefresh;
         int idx;
         int practiced, correct, streak;
         Question current;
@@ -82,6 +83,7 @@ namespace PCLock
             for (int i = 0; i < 4; i++)
             {
                 optBtns[i] = new Button();
+                optBtns[i].Name = "QuestionOption";   // 题目选项不是固定文案，Localize 必须跳过
                 optBtns[i].Size = new Size(560, 40);
                 optBtns[i].Location = new Point(18, 148 + i * 48);
                 optBtns[i].Tag = i;
@@ -118,6 +120,9 @@ namespace PCLock
             Program.Localize(this);
             Program.FlattenButtons(this);
             Next();
+
+            langRefresh = delegate { UpdateStats(); };
+            Program.RegisterDynamicRefresh(langRefresh);
         }
 
         void Next()

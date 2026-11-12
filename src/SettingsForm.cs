@@ -8,6 +8,9 @@ namespace PCLock
     /// <summary>家长设置窗口（进入前已验证家长PIN）</summary>
     public class SettingsForm : Form
     {
+        // 强引用：Program 只以 WeakReference 持有动态刷新委托
+        Action langRefresh;
+
         public SettingsForm()
         {
             Text = Strings.Fmt("电脑锁 v{0} - 家长设置", AppVersion.Version);
@@ -76,6 +79,14 @@ namespace PCLock
             menu.BringToFront();
             Program.Localize(this);
             Program.FlattenButtons(this);
+
+            // 动态文案（标题含版本、今日已用等）在语言切换时重新生成
+            langRefresh = delegate
+            {
+                Text = Strings.Fmt("电脑锁 v{0} - 家长设置", AppVersion.Version);
+                RefreshUserControls(cbUser, rbs, txtWin, lblUsed, gcb, scb);
+            };
+            Program.RegisterDynamicRefresh(langRefresh);
         }
 
         MenuStrip BuildMenuStrip()
@@ -94,13 +105,15 @@ namespace PCLock
             ToolStripMenuItem miLang = new ToolStripMenuItem("语言");
             miLang.DropDownItems.Add("中文", null, delegate
             {
-                Store.SetLanguage("zh"); Strings.Lang = "zh";
-                MessageBox.Show(this, Strings.Get("已切换为中文，重新打开的窗口生效。"), Strings.Get("电脑锁"));
+                Store.SetLanguage("zh");
+                Strings.SetLanguage("zh");   // 事件触发：当前及所有已打开窗口立即重刷
+                MessageBox.Show(this, Strings.Get("已切换为中文，所有已打开的窗口立即生效。"), Strings.Get("电脑锁"));
             });
             miLang.DropDownItems.Add("English", null, delegate
             {
-                Store.SetLanguage("en"); Strings.Lang = "en";
-                MessageBox.Show(this, "Switched to English. Reopened windows will use it.", "PCLock");
+                Store.SetLanguage("en");
+                Strings.SetLanguage("en");
+                MessageBox.Show(this, Strings.Get("已切换为英文，所有已打开的窗口立即生效。"), Strings.Get("电脑锁"));
             });
             menu.Items.Add(miLang);
 

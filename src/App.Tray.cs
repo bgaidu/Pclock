@@ -7,6 +7,9 @@ namespace PCLock
     /// <summary>App 的拆分文件：托盘与家长设置入口（同 partial class，行为不变）</summary>
     public partial class App : ApplicationContext
     {
+        // 强引用：Program 只以 WeakReference 持有动态刷新委托
+        Action langRefresh;
+
         /// <summary>构建托盘图标与右键菜单（主程序常驻入口）</summary>
         void BuildTray()
         {
@@ -15,21 +18,26 @@ namespace PCLock
             tray.Text = Strings.Get("电脑锁 - 运行中");
             tray.Visible = true;
             ContextMenuStrip menu = new ContextMenuStrip();
-            menu.Items.Add(Strings.Get("设置…（需家长PIN）"), null, delegate { ShowSettings(); });
-            menu.Items.Add(Strings.Get("立即锁定"), null, delegate { LockNow(); });
+            // 菜单项写中文原文，由 LocalizeItems 翻译并缓存，切换语言时可即时重刷
+            menu.Items.Add("设置…（需家长PIN）", null, delegate { ShowSettings(); });
+            menu.Items.Add("立即锁定", null, delegate { LockNow(); });
             // P1-9 练习模式：不解锁、不消耗额度，主倒计时照常运行（默认关闭时不显示）
             if (Store.IsPracticeEnabled(currentUser))
-                menu.Items.Add(Strings.Get("练习模式（不解锁）"), null, delegate { OpenPractice(); });
+                menu.Items.Add("练习模式（不解锁）", null, delegate { OpenPractice(); });
             // P1-10 使用记录
-            menu.Items.Add(Strings.Get("使用记录（7 天）"), null, delegate
+            menu.Items.Add("使用记录（7 天）", null, delegate
             {
                 using (UsageForm uf = new UsageForm()) uf.ShowDialog();
             });
             // 一键诊断包：不含 PIN / 密码哈希，家长可直接把生成的 txt 发给维护者
-            menu.Items.Add(Strings.Get("导出诊断包…"), null, delegate { ExportDiagnostics(); });
+            menu.Items.Add("导出诊断包…", null, delegate { ExportDiagnostics(); });
             Program.LocalizeItems(menu.Items);
             tray.ContextMenuStrip = menu;
             tray.DoubleClick += delegate { ShowSettings(); };
+
+            // 托盘文字随倒计时每 500ms 重算，这里只负责切换语言当次立即生效
+            langRefresh = delegate { tray.Text = Strings.Get("电脑锁 - 运行中"); };
+            Program.RegisterDynamicRefresh(langRefresh);
         }
 
         /// <summary>导出诊断包：版本、文件清单、err.txt 尾部、近期日志、脱敏配置摘要。</summary>

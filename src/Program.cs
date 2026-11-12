@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -9,6 +10,17 @@ namespace PCLock
 {
     static class Program
     {
+        // 即时语言刷新：缓存每个控件的「中文原文」，切换语言时按新语言重算。
+        // 用 WeakReference 持有控件/菜单项/委托，窗口关闭后可被 GC 回收，不造成泄漏。
+        // 注意：注册动态刷新的窗口必须用字段持有委托的强引用，否则弱引用会立刻失效。
+        static readonly List<WeakReference> localizedControls = new List<WeakReference>();
+        static readonly List<string> localizedControlSource = new List<string>();
+        static readonly List<WeakReference> localizedMenuItems = new List<WeakReference>();
+        static readonly List<string> localizedMenuSource = new List<string>();
+        static readonly List<WeakReference> dynamicRefreshers = new List<WeakReference>();
+
+        static Program() { Strings.LanguageChanged += RefreshLanguage; }
+
         // === DPI 感知相关 ===
         [DllImport("user32.dll")]
         static extern bool SetProcessDPIAware();
@@ -268,8 +280,18 @@ namespace PCLock
         {
             try
             {
-                string t = c.Text;
-                if (!string.IsNullOrEmpty(t)) c.Text = Strings.Get(t);
+                // 题目选项按钮承载题目内容（可能恰好命中「对/错」等词条），
+                // 既不翻译也不能缓存 —— 否则刷新时会把当前题选项改回旧题。
+                // 用 Name 精确标记，避免误伤「年级/科目」等 Tag 为 int 的普通复选框。
+                if (c.Name != "QuestionOption")
+                {
+                    string t = c.Text;
+                    if (Strings.Contains(t))
+                    {
+                        TrackControl(c, t);
+                        c.Text = Strings.Get(t);
+                    }
+                }
                 ToolStrip ts = c as ToolStrip;
                 if (ts != null) LocalizeItems(ts.Items);
                 if (c.ContextMenuStrip != null) LocalizeItems(c.ContextMenuStrip.Items);
@@ -277,7 +299,7 @@ namespace PCLock
             catch { }
         }
 
-        /// <summary>翻译菜单项（含多级子菜单）</summary>
+        /// <summary>翻译菜单项（含多级子菜单）并缓存原文</summary>
         internal static void LocalizeItems(ToolStripItemCollection items)
         {
             if (items == null) return;
@@ -286,11 +308,67 @@ namespace PCLock
                 try
                 {
                     string t = it.Text;
-                    if (!string.IsNullOrEmpty(t)) it.Text = Strings.Get(t);
+                    if (Strings.Contains(t))
+                    {
+                        TrackItem(it, t);
+                        it.Text = Strings.Get(t);
+                    }
                     ToolStripMenuItem mi = it as ToolStripMenuItem;
                     if (mi != null && mi.DropDownItems.Count > 0) LocalizeItems(mi.DropDownItems);
                 }
                 catch { }
+            }
+        }
+
+        static void TrackControl(Control c, string source)
+        {
+            for (int i = 0; i < localizedControls.Count; i++)
+                if (localizedControls[i].Target == c) return;
+            localizedControls.Add(new WeakReference(c));
+            localizedControlSource.Add(source);
+        }
+
+        static void TrackItem(ToolStripItem it, string source)
+        {
+            for (int i = 0; i < localizedMenuItems.Count; i++)
+                if (localizedMenuItems[i].Target == it) return;
+            localizedMenuItems.Add(new WeakReference(it));
+            localizedMenuSource.Add(source);
+        }
+
+        /// <summary>注册运行期动态文案的重算委托；调用方必须用字段持有委托强引用。</summary>
+        internal static void RegisterDynamicRefresh(Action refresh)
+        {
+            if (refresh == null) return;
+            dynamicRefreshers.Add(new WeakReference(refresh));
+        }
+
+        /// <summary>语言变更时重刷所有已打开窗口：静态控件 → 菜单 → 动态文案。</summary>
+        static void RefreshLanguage()
+        {
+            for (int i = localizedControls.Count - 1; i >= 0; i--)
+            {
+                Control c = localizedControls[i].Target as Control;
+                if (c == null || c.IsDisposed)
+                {
+                    localizedControls.RemoveAt(i); localizedControlSource.RemoveAt(i); continue;
+                }
+                try { c.Text = Strings.Get(localizedControlSource[i]); } catch { }
+            }
+            for (int i = localizedMenuItems.Count - 1; i >= 0; i--)
+            {
+                ToolStripItem it = localizedMenuItems[i].Target as ToolStripItem;
+                if (it == null)
+                {
+                    localizedMenuItems.RemoveAt(i); localizedMenuSource.RemoveAt(i); continue;
+                }
+                try { it.Text = Strings.Get(localizedMenuSource[i]); } catch { }
+            }
+            for (int i = dynamicRefreshers.Count - 1; i >= 0; i--)
+            {
+                Action a = dynamicRefreshers[i].Target as Action;
+                if (a == null) { dynamicRefreshers.RemoveAt(i); continue; }
+                try { a(); } catch { }
             }
         }
 
