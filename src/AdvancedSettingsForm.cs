@@ -37,7 +37,7 @@ namespace PCLock
             StartPosition = FormStartPosition.CenterParent;
             ShowInTaskbar = false;
             TopMost = true;
-            ClientSize = new Size(600, 580);
+            ClientSize = new Size(600, 610);
             this.Icon = Program.LoadAppIcon();
 
             // ---- 根布局：配置对象 / 选项卡（占满）/ 状态提示 / 按钮 ----
@@ -332,13 +332,10 @@ namespace PCLock
             g.Full(chkChildGrade, 0);
 
             g.Gap(2);
-            Label lh = PageGrid.MakeLabel("解析停留秒数（0=不强制）");
-            lh.Margin = new Padding(4, 4, 6, 4);
             txtHold = B(60);
-            Label le = PageGrid.MakeLabel("鼓励语");
-            le.Margin = new Padding(22, 4, 6, 4);
-            txtEncourage = B(190);
-            g.Row(lh, txtHold, le, txtEncourage);
+            g.Field("解析停留秒数（0=不强制）", txtHold);
+            txtEncourage = B(250);
+            g.Field("鼓励语", txtEncourage);
 
             Label ll = PageGrid.MakeLabel("界面语言（新窗口生效）");
             ll.Margin = new Padding(4, 4, 6, 4);
@@ -405,9 +402,9 @@ namespace PCLock
                 panel.Padding = new Padding(6, 8, 6, 8);
                 panel.ColumnCount = 3;
                 panel.RowCount = 0;
-                panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-                panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-                panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+                panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));    // 行标签
+                panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));    // 输入控件
+                panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f)); // 余量
                 page.AutoScroll = true;              // 小屏 / 大字号下可滚动，不裁剪
                 page.Controls.Add(panel);
                 // 换行宽度必须跟随实际宽度：首次布局前 panel.Width 还是 0，
