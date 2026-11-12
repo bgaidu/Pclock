@@ -25,9 +25,47 @@ namespace PCLock
             {
                 using (UsageForm uf = new UsageForm()) uf.ShowDialog();
             });
+            // 一键诊断包：不含 PIN / 密码哈希，家长可直接把生成的 txt 发给维护者
+            menu.Items.Add(Strings.Get("导出诊断包…"), null, delegate { ExportDiagnostics(); });
             Program.LocalizeItems(menu.Items);
             tray.ContextMenuStrip = menu;
             tray.DoubleClick += delegate { ShowSettings(); };
+        }
+
+        /// <summary>导出诊断包：版本、文件清单、err.txt 尾部、近期日志、脱敏配置摘要。</summary>
+        void ExportDiagnostics()
+        {
+            if (lockForm != null) lockForm.SuspendInteraction = true;
+            try
+            {
+                using (SaveFileDialog d = new SaveFileDialog())
+                {
+                    d.Filter = "文本文件 (*.txt)|*.txt";
+                    d.FileName = Diagnostics.FileName(DateTime.Now);
+                    d.InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+                    if (d.ShowDialog() != DialogResult.OK) return;
+
+                    string dir = AppDomain.CurrentDomain.BaseDirectory;
+                    string summary = "当前用户=" + currentUser +
+                        "\r\n每次时长(分)=" + Store.GetDurationMinutes(currentUser) +
+                        "\r\n可用时段=" + Store.GetWindow(currentUser) +
+                        "\r\n多规则=" + Store.GetRules(currentUser) +
+                        "\r\n题量=" + Store.GetQuestionCount(currentUser);
+                    string path = Diagnostics.CollectAndSave(dir, AppVersion.Version,
+                        AppVersion.Commit, summary, d.FileName);
+                    MessageBox.Show(Strings.Fmt("诊断包已导出：{0}", path), Strings.Get("电脑锁"),
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(Strings.Fmt("诊断包导出失败：{0}", ex.Message), Strings.Get("电脑锁"),
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                if (lockForm != null) lockForm.SuspendInteraction = false;
+            }
         }
 
         /// <summary>家长 PIN 验证通过后打开设置窗口（托盘菜单 / 双击入口）</summary>

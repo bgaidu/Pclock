@@ -95,16 +95,31 @@ jobs:
           Write-Host "===== package contents ====="
           Get-ChildItem release
 
+      # Offline upgrade helper (tools\upgrade.ps1) verifies this checksum before
+      # touching the installation directory. Keep the "hash  filename" format.
+      - name: Generate checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -Algorithm SHA256 'PCLock-Release.zip').Hash.ToLowerInvariant()
+          if ($hash -notmatch '^[0-9a-f]{64}$') { throw "Invalid SHA-256 output: $hash" }
+          $line = "$hash  PCLock-Release.zip"
+          [System.IO.File]::WriteAllText('SHA256SUMS.txt', $line + "`n", (New-Object System.Text.UTF8Encoding($false)))
+          Write-Host "SHA256SUMS.txt: $line"
+
       - name: Upload ZIP to Artifacts
         uses: actions/upload-artifact@v5
         with:
           name: PCLock-Release
-          path: PCLock-Release.zip
+          path: |
+            PCLock-Release.zip
+            SHA256SUMS.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: PCLock-Release.zip
+          files: |
+            PCLock-Release.zip
+            SHA256SUMS.txt
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

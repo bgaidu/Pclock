@@ -135,16 +135,13 @@ namespace PCLock
             bool math = current.Type == QType.MathCalc;
             answerBox.Visible = math;
             submitBtn.Visible = math;
-            // 同 LockForm：不能用 Visible 判断（构造期窗体未 Show 时 getter 恒为 false），
-            // 否则首题按钮文字为空
-            string[] opts = current.Options ?? new string[0];
-            int optCount = UiSafe.OptionCount(opts, optBtns.Length);
+            // 同 LockForm：渲染交给纯函数，不能用 Visible 判断（构造期 getter 恒为 false）
+            OptionSlot[] slots = QuestionView.Build(current, optBtns.Length);
             for (int i = 0; i < optBtns.Length; i++)
             {
-                bool show = !math && UiSafe.ShowOption(i, optCount);
-                optBtns[i].Visible = show;
+                optBtns[i].Visible = slots[i].Visible;
                 optBtns[i].Tag = i;
-                optBtns[i].Text = show ? opts[i] : "";
+                optBtns[i].Text = slots[i].Text;
             }
             UpdateStats();
         }

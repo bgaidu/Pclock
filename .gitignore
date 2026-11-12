@@ -25,6 +25,7 @@ _Version.cs
 
 # 运行期生成的数据/记录（不入库）
 logs/
+SHA256SUMS.txt
 review.json
 review.json.bak
 review-*.json

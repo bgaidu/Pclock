@@ -32,7 +32,7 @@
 `build.bat` 优先调用 **.NET Framework 4.x** 自带的编译器，产物 `PCLock.exe` 面向 .NET 4.0 运行时，在装有 .NET 4.0+ 的 Win7 上即可运行（如系统未带 4.x，请先安装 .NET Framework 4.x）。
 产物目录同时包含 `PCLock.exe.config`（声明支持的运行时），须与 `PCLock.exe` 放在同一目录。
 构建前会自动生成 `src\_Version.cs`：**版本号每次构建自动取自 git tag**（去掉 `v` 前缀；GitHub tag 构建用 `GITHUB_REF_NAME`，本地取 HEAD 上的 tag，否则取版本最高的 tag；无 tag / 无 git 回退 `1.0.0`），Commit 取 git 短哈希。脚本为 `gen_version.bat`，`build.bat` 与 VS（`PCLock.csproj` 的 `BeforeBuild`）共用，无需手工改版本号。
-单元测试：双击 `tests\run.bat`（同样基于系统自带 `csc`，零依赖），覆盖时段解析、题库组合与题库边界、PIN 哈希、数学答案一致性、断电折算、日志保留与统计键清理、错题库混入去重、多题库文件解析、多语言词典、选项按钮 Tag 解析（128 项）。
+单元测试：双击 `tests\run.bat`（同样基于系统自带 `csc`，零依赖），覆盖时段解析、题库组合与题库边界、PIN 哈希、数学答案一致性、断电折算、日志保留与统计键清理、错题库混入去重、多题库文件解析、多语言词典、选项按钮 Tag 解析、诊断报告脱敏（139 项）。
 
 ## 安装（只需一次）
 
@@ -43,8 +43,9 @@
    - 开始倒计时。
 3. 之后每次开机登录都自动开始倒计时，无需任何操作。
 
-> **升级到新版本**：不需要卸载——退出程序 → 替换 `PCLock.exe` / `PCLock.exe.config` → 重新以管理员运行。
-> 版本可从「关于」窗口或右键 exe → 属性 → 详细信息（文件版本 `1.6.4.0`）确认。
+> **升级到新版本**：不需要卸载，推荐用 `tools\upgrade.bat`（自动备份 + 校验 + 只替换 exe/config/图标 + 失败回滚）。
+> 也可手动：退出程序 → 替换 `PCLock.exe` / `PCLock.exe.config` → 重新以管理员运行。
+> 版本可从「关于」窗口或右键 exe → 属性 → 详细信息（文件版本 `1.6.6.0`）确认；发布包附 `SHA256SUMS.txt` 供校验。
 > 完整步骤、备份清单、回滚与常见问题见 [`docs/升级指南.md`](docs/升级指南.md)。
 
 ## 日常使用（家长）
@@ -626,7 +627,7 @@ LaTeX/手写/语音输入、TV 遥控器虚拟键盘、大人/儿童开机双选
 
 ```bat
 tests\gate.bat        :: 一键门禁：单测 + Release + Debug + 清单检查
-tests\run.bat         :: 单测（128 项，含 5 项负向变异回归）
+tests\run.bat         :: 单测（139 项，含负向变异回归）
 build.bat Release     :: 产物 bin\Release\PCLock.exe（请核对时间戳）
 ```
 
@@ -637,7 +638,7 @@ build.bat Release     :: 产物 bin\Release\PCLock.exe（请核对时间戳）
 > （`v1.6.0` → `1.6.0`），CI tag 构建用 `GITHUB_REF_NAME` 优先，本地用 `git tag`，
 > 无 tag 回退 `1.0.0`。`build.bat` 与 VS 共用同一脚本，打完 tag 后构建即自动对齐，无需改代码。
 
-> 测试规模由 53 项增至 **128 项**；上文历史更新日志中的「53 项」「85 项」「99 项」为当时口径。
+> 测试规模由 53 项增至 **139 项**；上文历史更新日志中的「53 项」「85 项」「99 项」为当时口径。
 > 新增 GUI 行为（首次密码、高级规则、练习、休息、使用记录）需按
 > `docs/回归验证清单.md` B17–B34 在管理员真机逐项验证，代理环境无法完成。
 
@@ -694,9 +695,19 @@ build.bat Release     :: 产物 bin\Release\PCLock.exe（请核对时间戳）
 | 防复发 | `tests\gate.bat` 新增 5/5 守卫：`src\**\*.cs` 出现 `if (xxx.Visible)`（跳过注释行）即失败；已用可编译样例注入验证会拦下，移除后恢复通过 |
 | 验证 | 单测 121 → **128 项**（新增 `tests/Batch5Tests.cs` 7 项：null/非 int/越界 Tag、2 选项与 4 选项可见性、null 选项数组钳制、隐藏按钮残留 Tag 组合场景） |
 
+### 2026-11-12 - 第七批（可靠性：升级 / 排障 / 可测性，单测 128 → 139）
+
+| 类别 | 内容 |
+|---|---|
+| 离线升级助手 | `tools\upgrade.bat` / `upgrade.ps1`：管理员权限与旧进程检查 → `SHA256SUMS.txt` 校验 → 版本校验 → 整目录备份 → **只替换** `PCLock.exe` / `.config` / `AppIcon.ico` → 替换后版本核对 → 失败自动回滚。明确跳过 `chinese.txt` / `english.txt` / `banks\` / `logs\` / `review-*.json` 与注册表；低版本脚本宿主可用 `-Source` 指向手动解压目录。端到端实测：正常 RC=0，篡改校验和 RC=1 且 exe 未变 |
+| 一键诊断包 | 托盘「导出诊断包…」生成 txt：版本、安装目录文件清单、`err.txt` 尾部、近 7 个审计日志、脱敏配置摘要；`Diagnostics.Redact` 过滤含哈希 / 凭据的行，报告不含 PIN 值 |
+| UI 可测化 | 新增 `src/QuestionView.cs`：选项按钮的 Visible / Text / Tag 由纯函数算出，UI 层只赋值；`gate.bat` 6/6 守卫强制 `LockForm` / `PracticeForm` 走该纯函数，杜绝 v1.6.4 那类构造期崩溃复发 |
+| 发布校验 | `release.yml` 生成并上传 `SHA256SUMS.txt`，升级助手用它核对下载完整性 |
+| 验证 | 单测 128 → **139 项**（`tests/Batch6Tests.cs` 11 项：QuestionView 6 项含负向变异、Diagnostics 5 项）；`tests\gate.bat` 6 步全绿 |
+
 ### 未做 / 需外部资源
 
-- 真机 B1–B30 回归、标准用户 DACL、VS/MSBuild 实跑：代理环境做不了，脚本与清单已交付。
+- 真机 B1–B39 回归、标准用户 DACL、VS/MSBuild 实跑：代理环境做不了，脚本与清单已交付。
 - 代码签名：需商业/EV 证书；`sign.bat` 已支持 `PCLOCK_EXPECTED_CERT_SHA256`。
 - 安装包编译：需本机 Inno Setup 6（`ISCC.exe installer\PCLock.iss`）。
 - 分层架构 L0–L3 实际迁移：长期项，前置条件是真机回归全绿，方案已写好但**未执行**。

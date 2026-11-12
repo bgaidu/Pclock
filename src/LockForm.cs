@@ -506,14 +506,13 @@ namespace PCLock
                 // WinForms 中父窗体不可见时子控件的 Visible getter 恒返回 false，会跳过
                 // Text/Tag 赋值 —— 按钮显示后文字为空、Tag 为 null，点击 (int)null 即
                 // NullReferenceException（v1.6.4 线上事故根因）。
-                string[] opts = q.Options ?? new string[0];
-                int optCount = UiSafe.OptionCount(opts, optBtns.Length);
+                // 渲染结果由纯函数算出（构造期窗体未 Show 也正确）；UI 层只做无脑赋值
+                OptionSlot[] slots = QuestionView.Build(q, optBtns.Length);
                 for (int i = 0; i < optBtns.Length; i++)
                 {
-                    bool show = UiSafe.ShowOption(i, optCount);
-                    optBtns[i].Visible = show;
-                    optBtns[i].Tag = show ? (object)i : null;
-                    optBtns[i].Text = show ? opts[i] : "";
+                    optBtns[i].Visible = slots[i].Visible;
+                    optBtns[i].Tag = QuestionView.TagOf(slots[i]);
+                    optBtns[i].Text = slots[i].Text;
                 }
             }
             LayoutControls();
