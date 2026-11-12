@@ -375,7 +375,7 @@ namespace PCLock
                 // hardReason 是 App 运行期传入的中文短语（额度/休息/时间异常）。
                 // 必须过词典，否则英文模式下标题漏译；字段本身保留中文，IndexOf("休息") 判断不受影响。
                 titleLabel.Text = UiText.HardLockTitle(hardReason);
-                questionLabel.Text = UiText.HardLockQuestion(Store.GetRules(user));
+                questionLabel.Text = UiText.HardLockQuestion(Store.GetRules(user), hardReason);
                 statusLabel.Text = Strings.Get("休息结束后需答题解锁，或由家长输入 PIN / 临时放行。");
                 restActive = RestCooldown.IsRestReason(hardReason);
                 restLabel.Visible = restActive;

@@ -14,9 +14,17 @@ namespace PCLock
             return string.IsNullOrEmpty(reason) ? "" : Strings.Get(reason);
         }
 
-        /// <summary>硬锁说明：没有规则时提示用 PIN 解锁，否则列出当前规则</summary>
+        /// <summary>硬锁说明：护眼休息显示护眼口号；没有规则时提示用 PIN 解锁，否则列出当前规则</summary>
         public static string HardLockQuestion(string rules)
         {
+            return HardLockQuestion(rules, null);
+        }
+
+        /// <summary>带硬锁原因的版本：护眼休息用「保护眼睛 从我做起」替代 PIN 提示</summary>
+        public static string HardLockQuestion(string rules, string reason)
+        {
+            if (RestCooldown.IsRestReason(reason))
+                return Strings.Get("保护眼睛 从我做起");
             return string.IsNullOrWhiteSpace(rules)
                 ? Strings.Get("请使用家长 PIN 解锁")
                 : Strings.Get("当前规则：") + "\n" + rules;

@@ -33,4 +33,15 @@ public class Batch11Tests
         Assert.AreEqual(0, RestCooldown.RemainingSeconds(until, until));
         Assert.AreEqual(0, RestCooldown.Deadline(now, 0), "0 分钟 = 不休息");
     }
+
+    [Test]
+    public void RestLockShowsEyeSloganInsteadOfPinPrompt()
+    {
+        Assert.AreEqual("保护眼睛 从我做起", UiText.HardLockQuestion("", "护眼休息时间"),
+            "护眼休息不能提示 PIN 解锁");
+        Assert.IsTrue(UiText.HardLockQuestion("1-5|17:00-21:00", "护眼休息时间").Contains("保护眼睛"),
+            "休息时即便配了规则也显示口号");
+        Assert.IsTrue(UiText.HardLockQuestion("", "今日使用额度已用完").Contains("PIN"),
+            "额度锁仍然提示 PIN 解锁");
+    }
 }

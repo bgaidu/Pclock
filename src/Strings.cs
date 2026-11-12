@@ -87,6 +87,7 @@ namespace PCLock
             { "答错了。", "Wrong." },
             { "当前不在允许使用时段", "Currently outside allowed hours" },
             { "请使用家长 PIN 解锁", "Use the parent PIN to unlock" },
+            { "保护眼睛 从我做起", "Protect your eyes - it starts with me" },
             { "休息结束后需答题解锁，或由家长输入 PIN / 临时放行。", "Answer questions after the break, or unlock with the parent PIN / temporary pass." },
             { "还需休息 {0} 分 {1} 秒", "Rest left: {0}m {1}s" },
             { "休息结束，正在进入答题…", "Rest over - starting the quiz..." },
