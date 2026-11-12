@@ -14,7 +14,7 @@ HKLM 注册表（PIN / 时长 / 时段 / 额度 / 加练池）、计划任务。
 param(
     [string]$Zip = '',
     [string]$Source = '',
-    [string]$InstallDir = 'C:\Program Files\TVLock',
+    [string]$InstallDir = 'C:\Program Files\PCLock',
     [string]$ExpectedVersion = '',
     [switch]$SkipChecksum
 )
