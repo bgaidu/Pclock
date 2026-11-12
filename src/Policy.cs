@@ -315,6 +315,24 @@ namespace PCLock
             }
             return sb.ToString();
         }
+
+        /// <summary>
+        /// 答错后的状态行（纯函数，便于单测）。反馈开启时提示「看完解析点继续答题」，
+        /// 否则提示冷却秒数；冷却结束仍由本函数生成，避免被 UpdateStatus 覆盖掉解析提示。
+        /// </summary>
+        public static string StatusText(bool feedbackOn, int secondsLeft)
+        {
+            if (feedbackOn)
+                return secondsLeft > 0
+                    ? Strings.Fmt("回答错误，全部清零重新开始，请 {0} 秒后点「继续答题」", secondsLeft)
+                    : Strings.Get("看完正确答案与解析后，点「继续答题」重新开始");
+            return secondsLeft > 0
+                ? Strings.Fmt("回答错误，全部清零重新开始，请 {0} 秒后再试", secondsLeft)
+                : Strings.Get("回答错误，全部清零重新开始");
+        }
+
+        /// <summary>反馈停留期间拦截一切答题输入：否则孩子能对着屏幕上的正确答案反复点旧题刷判定</summary>
+        public static bool BlocksAnswerInput(bool feedbackPending) { return feedbackPending; }
     }
 
     // ===== 答题判定可配（P0-7）=====

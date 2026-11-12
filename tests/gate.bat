@@ -13,14 +13,14 @@ setlocal EnableDelayedExpansion
 cd /d "%~dp0.."
 set CI=true
 
-echo === 1/7 Unit tests (tests\run.bat) ===
+echo === 1/8 Unit tests (tests\run.bat) ===
 call tests\run.bat
 if !ERRORLEVEL! NEQ 0 (
   echo [FAIL] unit tests
   exit /b 1
 )
 
-echo === 2/7 Release build ===
+echo === 2/8 Release build ===
 call build.bat Release
 if !ERRORLEVEL! NEQ 0 (
   echo [FAIL] build.bat Release
@@ -31,7 +31,7 @@ if not exist "bin\Release\PCLock.exe" (
   exit /b 1
 )
 
-echo === 3/7 Debug build ===
+echo === 3/8 Debug build ===
 call build.bat Debug
 if !ERRORLEVEL! NEQ 0 (
   echo [FAIL] build.bat Debug
@@ -42,7 +42,7 @@ if not exist "bin\Debug\PCLock.exe" (
   exit /b 1
 )
 
-echo === 4/7 Source/test manifest sanity ===
+echo === 4/8 Source/test manifest sanity ===
 if not exist "src\Policy.cs"       ( echo [FAIL] src\Policy.cs missing & exit /b 1 )
 if not exist "src\Store.Extras.cs" ( echo [FAIL] src\Store.Extras.cs missing & exit /b 1 )
 if not exist "src\Housekeeping.cs" ( echo [FAIL] src\Housekeeping.cs missing & exit /b 1 )
@@ -54,6 +54,7 @@ if not exist "tests\Batch4Tests.cs" ( echo [FAIL] tests\Batch4Tests.cs missing &
 if not exist "tests\Batch5Tests.cs" ( echo [FAIL] tests\Batch5Tests.cs missing & exit /b 1 )
 if not exist "tests\Batch6Tests.cs" ( echo [FAIL] tests\Batch6Tests.cs missing & exit /b 1 )
 if not exist "tests\Batch7Tests.cs" ( echo [FAIL] tests\Batch7Tests.cs missing & exit /b 1 )
+if not exist "tests\Batch8Tests.cs" ( echo [FAIL] tests\Batch8Tests.cs missing & exit /b 1 )
 if not exist "tools\upgrade.ps1"    ( echo [FAIL] tools\upgrade.ps1 missing & exit /b 1 )
 if not exist "tools\upgrade.bat"    ( echo [FAIL] tools\upgrade.bat missing & exit /b 1 )
 rem Embedded file version must be present, otherwise Explorer cannot show it
@@ -62,7 +63,7 @@ rem attribute block was dropped or the script failed silently).
 powershell -NoProfile -Command "$v=(Get-Item 'bin\Release\PCLock.exe').VersionInfo.FileVersion; if (-not $v) { exit 1 }; Write-Host ('[OK] FileVersion=' + $v)"
 if errorlevel 1 ( echo [FAIL] exe has no FileVersion & exit /b 1 )
 
-echo === 5/7 UI visibility guard ===
+echo === 5/8 UI visibility guard ===
 rem Control.Visible returns false while the parent Form has not been shown yet,
 rem so "if (ctrl.Visible)" is never true during constructor-time rendering.
 rem That exact pattern shipped a NullReferenceException in v1.6.4: the option
@@ -77,7 +78,7 @@ if errorlevel 1 (
 )
 echo [OK] no Control.Visible conditions
 
-echo === 6/7 Reliability batch wiring ===
+echo === 6/8 Reliability batch wiring ===
 rem Refuse to ship if the offline upgrade helper, diagnostics entry, checksum
 rem asset or the pure UI renderer is silently bypassed / dropped.
 powershell -NoProfile -Command "$rel = Get-Content '.github\workflows\release.yml' -Raw; $lf = Get-Content 'src\LockForm.cs' -Raw; $pf = Get-Content 'src\PracticeForm.cs' -Raw; $tr = Get-Content 'src\App.Tray.cs' -Raw; if ($rel -notmatch 'SHA256SUMS.txt') { Write-Host '  checksum asset missing'; exit 1 }; if ($lf -notmatch 'QuestionView.Build') { Write-Host '  LockForm bypasses QuestionView'; exit 1 }; if ($pf -notmatch 'QuestionView.Build') { Write-Host '  PracticeForm bypasses QuestionView'; exit 1 }; if ($tr -notmatch 'ExportDiagnostics') { Write-Host '  diagnostics entry missing'; exit 1 }"
@@ -87,7 +88,7 @@ if errorlevel 1 (
 )
 echo [OK] reliability wiring
 
-echo === 7/7 Live language switch wiring ===
+echo === 7/8 Live language switch wiring ===
 rem Strings is a pure-logic layer: it must NOT reference WinForms. Refresh is
 rem decoupled through LanguageChanged, cached source text and dynamic delegates.
 powershell -NoProfile -Command "$st = Get-Content 'src\Strings.cs' -Raw; $pg = Get-Content 'src\Program.cs' -Raw; $sf = Get-Content 'src\SettingsForm.cs' -Raw; $lf = Get-Content 'src\LockForm.cs' -Raw; $uf = Get-Content 'src\UsageForm.cs' -Raw; $pf = Get-Content 'src\PracticeForm.cs' -Raw; $af = Get-Content 'src\AboutForm.cs' -Raw; $tr = Get-Content 'src\App.Tray.cs' -Raw; if ($st -notmatch 'event Action LanguageChanged') { Write-Host '  Strings event missing'; exit 1 }; if ($pg -notmatch 'LanguageChanged \+= RefreshLanguage') { Write-Host '  Program subscription missing'; exit 1 }; if ($pg -notmatch 'RegisterDynamicRefresh') { Write-Host '  dynamic refresh API missing'; exit 1 }; if ($sf -notmatch 'Strings.SetLanguage') { Write-Host '  language menu not using SetLanguage'; exit 1 }; foreach ($f in @($sf,$lf,$uf,$pf,$af,$tr)) { if ($f -notmatch 'RegisterDynamicRefresh') { Write-Host '  a window has no dynamic refresh delegate'; exit 1 } }; if ($lf -match 'pinOkBtn.Text = Strings.Get') { Write-Host '  constructor pre-translates a static label'; exit 1 }"
@@ -96,5 +97,15 @@ if errorlevel 1 (
   exit /b 1
 )
 echo [OK] live language switch wiring
+echo === 8/8 Answer feedback / translation wiring ===
+rem OnWrong must keep the answered question on screen until the child clicks
+rem Continue; rebuilding the batch immediately makes the answer mismatch the
+rem displayed question. Pure logic and hard-lock / PIN translations stay wired.
+powershell -NoProfile -Command "$lf = Get-Content 'src\LockForm.cs' -Raw; $pc = Get-Content 'src\Policy.cs' -Raw; $st = Get-Content 'src\Strings.cs' -Raw; $bad = @(); if ($lf -notmatch 'feedbackPending') { $bad += 'feedbackPending missing' }; if ($lf -notmatch 'AnswerFeedback.BlocksAnswerInput') { $bad += 'answer input guard missing' }; if ($pc -notmatch 'public static string StatusText') { $bad += 'AnswerFeedback.StatusText missing' }; $m = [regex]::Match($lf, 'void OnWrong\(\)[\s\S]*?(?=\r?\n        void )'); if (-not $m.Success) { $bad += 'OnWrong body not found' } elseif ($m.Value -match 'StartBatch\(\)') { $bad += 'OnWrong rebuilds batch too early' }; if ($lf -notmatch 'continueBtn.Click[\s\S]{0,700}?StartBatch\(\)') { $bad += 'manual continue does not rebuild batch' }; foreach ($k in @('Daily usage quota reached','Eye-rest break','System clock changed - protective lock','Current rules:','Allowed hours:')) { if ($st -notmatch [regex]::Escape($k)) { $bad += ('missing translation: ' + $k) } }; if ($bad.Count -gt 0) { $bad | ForEach-Object { Write-Host ('  ' + $_) }; exit 1 }"
+if errorlevel 1 (
+  echo [FAIL] answer feedback / translation wiring missing
+  exit /b 1
+)
+echo [OK] answer feedback / translation wiring
 echo [OK] gate passed: tests + Release + Debug + manifest + guards
 exit /b 0

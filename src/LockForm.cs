@@ -52,6 +52,9 @@ namespace PCLock
         bool dueToWindow;   // true=因"不在每日可用时段"而锁（硬锁）
         bool restActive;    // 护眼休息中（用字段而非 restLabel.Visible：构造期 getter 不可靠）
         Action langRefresh; // 语言切换时重算动态状态行（Program 只持弱引用）
+        bool feedbackPending;       // 答错后正在展示【本题】的正确答案/解析，等孩子点「继续答题」
+        Question feedbackQuestion;  // 反馈对应的那道题（切语言时重算解析）
+        int pinFailLeft;            // >0 表示家长 PIN 面板正显示「还可尝试 N 次」，切语言时重算
         bool autoUnlocked;  // 自动解锁只触发一次
 
         Label feedbackLabel;    // 答错后的正确答案 / 解析
@@ -116,7 +119,21 @@ namespace PCLock
             langRefresh = delegate
             {
                 if (dueToWindow) ApplyDueToWindowUI();
+                else if (feedbackPending)
+                {
+                    // 反馈停留期：重算解析与状态行，不能用 UpdateStatus 覆盖「请点继续答题」
+                    if (feedbackQuestion != null)
+                        feedbackLabel.Text = AnswerFeedback.Build(feedbackQuestion);
+                    statusLabel.Text = AnswerFeedback.StatusText(true, wrongLeft);
+                }
                 else if (questions != null && questions.Count > 0) UpdateStatus();
+
+                // 家长 PIN 面板的运行期提示原先要等下一次操作才更新语言，这里即时重算
+                if (pinCooldown > 0)
+                    pinLabel.Text = Strings.Fmt("PIN 错误次数过多，请 {0} 秒后再试", pinCooldown);
+                else if (pinFailLeft > 0)
+                    pinLabel.Text = Strings.Fmt("PIN 错误（还可尝试 {0} 次）", pinFailLeft);
+                else pinLabel.Text = Strings.Get("家长 PIN：");
             };
             Program.RegisterDynamicRefresh(langRefresh);
         }
@@ -160,7 +177,15 @@ namespace PCLock
             parentBtn.Font = new Font("Microsoft YaHei", 9);
             parentBtn.AutoSize = true;
             parentBtn.ForeColor = Color.DimGray;
-            parentBtn.Click += delegate { parentPanel.Visible = true; pinBox.Focus(); };
+            parentBtn.Click += delegate
+            {
+                parentPanel.Visible = true;
+                // 重开面板时清掉上次的错误提示；冷却中则继续显示冷却文案
+                if (pinCooldown > 0)
+                    pinLabel.Text = Strings.Fmt("PIN 错误次数过多，请 {0} 秒后再试", pinCooldown);
+                else { pinFailLeft = 0; pinLabel.Text = Strings.Get("家长 PIN："); }
+                pinBox.Focus();
+            };
 
             parentPanel = new Panel();
             parentPanel.BorderStyle = BorderStyle.FixedSingle;
@@ -282,10 +307,15 @@ namespace PCLock
             continueBtn.Visible = false;
             continueBtn.Click += delegate
             {
+                if (!feedbackPending) return;
+                feedbackPending = false;
+                feedbackQuestion = null;
                 feedbackLabel.Visible = false;
+                feedbackLabel.Text = "";
                 continueBtn.Visible = false;
-                ShowCurrentQuestion();
-                UpdateStatus();
+                // 看清解析后由孩子手动进入下一轮：此时才重建批次
+                // （答错清零 + 最新加练池），屏幕上的题与刚才的答案始终对得上
+                StartBatch();
             };
             Controls.Add(continueBtn);
 
@@ -341,11 +371,14 @@ namespace PCLock
         {
             if (!string.IsNullOrEmpty(hardReason))
             {
-                titleLabel.Text = hardReason;
+                // hardReason 是 App 运行期传入的中文短语（额度/休息/时间异常）。
+                // 必须过词典，否则英文模式下标题漏译；字段本身保留中文，IndexOf("休息") 判断不受影响。
+                titleLabel.Text = Strings.Get(hardReason);
                 string rules = Store.GetRules(user);
                 questionLabel.Text = string.IsNullOrWhiteSpace(rules)
-                    ? "请使用家长 PIN 解锁" : ("当前规则：\n" + rules);
-                statusLabel.Text = "休息结束后自动解锁，或由家长输入 PIN / 临时放行。";
+                    ? Strings.Get("请使用家长 PIN 解锁")
+                    : (Strings.Get("当前规则：") + "\n" + rules);
+                statusLabel.Text = Strings.Get("休息结束后自动解锁，或由家长输入 PIN / 临时放行。");
                 restActive = hardReason.IndexOf("休息") >= 0;
                 restLabel.Visible = restActive;
             }
@@ -354,7 +387,7 @@ namespace PCLock
                 titleLabel.Text = "当前不在使用时段";
                 string w = Store.GetWindow(user);
                 questionLabel.Text = string.IsNullOrWhiteSpace(w)
-                    ? "当前不在允许使用时段" : ("允许使用时段：\n" + w);
+                    ? "当前不在允许使用时段" : (Strings.Get("允许使用时段：") + "\n" + w);
                 statusLabel.Text = WindowStatusText();
             }
             answerBox.Visible = false;
@@ -538,7 +571,9 @@ namespace PCLock
 
         void SubmitAnswer()
         {
-            if (wrongLeft > 0) return;
+            // 冷却结束后、点「继续答题」之前也必须拦截：否则孩子能对着屏幕上的
+            // 正确答案反复点旧题刷判定（答错清零的语义会被绕过）
+            if (wrongLeft > 0 || AnswerFeedback.BlocksAnswerInput(feedbackPending)) return;
             if (questions[qIndex].Type != QType.MathCalc) return;
             int v;
             if (!int.TryParse(answerBox.Text.Trim(), out v))
@@ -555,7 +590,9 @@ namespace PCLock
 
         void OnOptionClick(object sender, EventArgs e)
         {
-            if (wrongLeft > 0) return;
+            // 冷却结束后、点「继续答题」之前也必须拦截：否则孩子能对着屏幕上的
+            // 正确答案反复点旧题刷判定（答错清零的语义会被绕过）
+            if (wrongLeft > 0 || AnswerFeedback.BlocksAnswerInput(feedbackPending)) return;
             if (questions == null || qIndex < 0 || qIndex >= questions.Count) return;
             Question q = questions[qIndex];
             if (q == null || q.Type == QType.MathCalc || q.Options == null) return;
@@ -616,27 +653,28 @@ namespace PCLock
 
             correctCount = 0;
             correctQuestions.Clear();
-            StartBatch();                 // 按最新的加练池重建题目
-            // 解析停留时长与答错冷却合并：停留期间不能点「继续」，孩子无法跳过解析
-            int hold = Store.IsFeedbackEnabled(user) ? Store.GetFeedbackHoldSec(user) : 0;
+
+            // 【不要在这里 StartBatch】。旧实现答错瞬间就重建题目，屏幕换成新第 1 题，
+            // 而下方反馈显示的却是刚答错那题的正确答案 —— 题与答案对不上。
+            // 现在保留当前题，让孩子看完解析后点「继续答题」再重建（或冷却结束自动重建）。
+            bool feedbackOn = Store.IsFeedbackEnabled(user);
+            feedbackPending = feedbackOn;
+            feedbackQuestion = feedbackOn ? wrong : null;
+            int hold = feedbackOn ? Store.GetFeedbackHoldSec(user) : 0;
             wrongLeft = Math.Max(Constants.WrongCooldownSec, hold);
             lastCooldownTick = Environment.TickCount;
             answerBox.Enabled = false;
             submitBtn.Enabled = false;
             foreach (Button b in optBtns) b.Enabled = false;
 
-            if (Store.IsFeedbackEnabled(user))
+            if (feedbackOn)
             {
                 feedbackLabel.Text = AnswerFeedback.Build(wrong);
                 feedbackLabel.Visible = true;
                 continueBtn.Visible = true;
-                continueBtn.Enabled = false;   // 冷却结束后才可点
-                statusLabel.Text = Strings.Fmt("回答错误，全部清零重新开始，请 {0} 秒后点「继续答题」", wrongLeft);
+                continueBtn.Enabled = false;   // 停留/冷却结束后才可点
             }
-            else
-            {
-                statusLabel.Text = Strings.Fmt("回答错误，全部清零重新开始，请 {0} 秒后再试", wrongLeft);
-            }
+            statusLabel.Text = AnswerFeedback.StatusText(feedbackOn, wrongLeft);
             LayoutControls();
         }
 
@@ -682,6 +720,7 @@ namespace PCLock
                         if (pinFails >= Constants.PinMaxFails)
                         {
                             pinFails = 0;
+                            pinFailLeft = 0;
                             pinCooldown = Constants.PinCooldownSec;
                             lastCooldownTick = Environment.TickCount;
                             pinBox.Enabled = false;
@@ -691,7 +730,8 @@ namespace PCLock
                         else
                         {
                             pinOkBtn.Enabled = true;
-                            pinLabel.Text = Strings.Fmt("PIN 错误（还可尝试 {0} 次）", Constants.PinMaxFails - pinFails);
+                            pinFailLeft = Constants.PinMaxFails - pinFails;
+                            pinLabel.Text = Strings.Fmt("PIN 错误（还可尝试 {0} 次）", pinFailLeft);
                             AuditLog.Write("密码验证失败：锁屏家长入口（还可尝试 " + (Constants.PinMaxFails - pinFails) + " 次）");
                         }
                     });
@@ -724,17 +764,23 @@ namespace PCLock
                     if (wrongLeft > 0)
                     {
                         wrongLeft--;
-                        if (wrongLeft == 0)
+                        if (wrongLeft == 0 && feedbackPending)
                         {
+                            // 反馈开启：只放行「继续答题」，答题控件保持禁用，题目保持原题
+                            continueBtn.Enabled = true;   // 不读 Visible：构造期 getter 不可靠
+                            statusLabel.Text = AnswerFeedback.StatusText(true, 0);
+                        }
+                        else if (wrongLeft == 0)
+                        {
+                            // 反馈关闭：冷却结束后才重建批次（答错清零），期间屏幕仍是原题
                             answerBox.Enabled = true;
                             submitBtn.Enabled = true;
                             foreach (Button b in optBtns) b.Enabled = true;
-                            continueBtn.Enabled = true;   // 无条件恢复（不读 Visible：构造期 getter 不可靠）
-                            UpdateStatus();
+                            StartBatch();                 // 内部已刷新状态行
                         }
                         else
                         {
-                            statusLabel.Text = Strings.Fmt("回答错误，请 {0} 秒后再试", wrongLeft);
+                            statusLabel.Text = AnswerFeedback.StatusText(feedbackPending, wrongLeft);
                         }
                     }
                     if (pinCooldown > 0)
@@ -744,6 +790,7 @@ namespace PCLock
                         {
                             pinBox.Enabled = true;
                             pinOkBtn.Enabled = true;
+                            pinFailLeft = 0;
                             pinLabel.Text = Strings.Get("家长 PIN：");
                         }
                         else
