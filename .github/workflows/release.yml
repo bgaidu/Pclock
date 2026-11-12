@@ -12,6 +12,9 @@ permissions:
 
 jobs:
   build:
+    # 双保险：即使有人误把 push 分支 / workflow_dispatch 加回 on，
+    # 只要不是 v* tag 的 push，这个 job 就不会编译、不会发布。
+    if: github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
 
     steps:

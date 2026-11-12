@@ -1,9 +1,10 @@
 name: Unit Tests
 
-# 只有打 tag 时才在 GitHub 上编译 PCLock.exe（见 release.yml）。
-# 平时 PR / 手动运行只跑零依赖单测，避免每次 push 都跑一遍 build.bat。
+# 非 tag 不编译、也不自动跑任何 workflow。
+# 本文件只保留「手动运行」入口（且只跑零依赖单测，不调用 build.bat）；
+# PR / 普通 push 一律零运行，质量门禁由本地 tests\gate.bat 保证。
+# 唯一会自动运行的工作流是 release.yml（仅 push v* tag）。
 on:
-  pull_request:
   workflow_dispatch:
 
 permissions:
